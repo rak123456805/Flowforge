@@ -52,19 +52,21 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1, duration: 0.4 }}
-            className="inline-flex items-center gap-2.5 mb-4"
-          >
-            <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-2xl font-bold tracking-tight gradient-text">
-              FlowForge
-            </span>
-          </motion.div>
+          <Link href="/" className="inline-block">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1, duration: 0.4 }}
+              className="inline-flex items-center gap-2.5 mb-4 hover:opacity-85 transition-opacity"
+            >
+              <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-2xl font-bold tracking-tight gradient-text">
+                FlowForge
+              </span>
+            </motion.div>
+          </Link>
           <p className="text-zinc-400 text-sm">AI Agent Workflow Orchestrator</p>
         </div>
 

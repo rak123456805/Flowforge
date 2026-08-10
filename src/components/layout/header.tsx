@@ -227,7 +227,7 @@ function UserMenu() {
   const handleSignOut = async () => {
     await signOut();
     toast.success("Signed out");
-    router.push("/login");
+    router.push("/");
   };
 
   return (

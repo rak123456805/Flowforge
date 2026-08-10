@@ -48,14 +48,16 @@ export default function RegisterPage() {
         className="relative w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2.5 mb-4">
-            <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <Zap className="w-5 h-5 text-white" />
+          <Link href="/" className="inline-block">
+            <div className="inline-flex items-center gap-2.5 mb-4 hover:opacity-85 transition-opacity">
+              <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-2xl font-bold tracking-tight gradient-text">
+                FlowForge
+              </span>
             </div>
-            <span className="text-2xl font-bold tracking-tight gradient-text">
-              FlowForge
-            </span>
-          </div>
+          </Link>
           <p className="text-zinc-400 text-sm">Create your account</p>
         </div>
 
