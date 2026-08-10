@@ -424,6 +424,20 @@ export default function HomePage() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1, delay: 0.4 }}
+            className="mt-16 relative mx-auto max-w-4xl rounded-2xl border border-white/10 bg-zinc-950/80 p-2 shadow-2xl shadow-purple-500/10 overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-gradient-to-t from-purple-500/10 to-transparent pointer-events-none" />
+            <img
+              src="/flowforge_hero_canvas.png"
+              alt="FlowForge Visual Workflow Builder Canvas Screenshot"
+              className="rounded-xl w-full h-auto object-cover border border-white/5 shadow-2xl"
+            />
+          </motion.div>
         </div>
       </section>
 
