@@ -31,6 +31,102 @@ import {
   ThumbsUp
 } from "lucide-react";
 
+function NodeCard({
+  title,
+  subtext,
+  icon: Icon,
+  status,
+  colorClass,
+  badgeText
+}: {
+  title: string;
+  subtext: string;
+  icon: any;
+  status: "idle" | "running" | "success" | "paused";
+  colorClass: string;
+  badgeText?: string;
+}) {
+  const statusColors = {
+    idle: "border-zinc-800 text-zinc-500 bg-zinc-950/40",
+    running: "border-purple-500/50 text-purple-300 bg-purple-500/5 shadow-[0_0_15px_rgba(139,92,246,0.15)] animate-pulse",
+    success: "border-emerald-500/50 text-emerald-300 bg-emerald-500/5 shadow-[0_0_10px_rgba(16,185,129,0.05)]",
+    paused: "border-amber-500/50 text-amber-300 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.2)] animate-bounce"
+  };
+
+  const statusText = {
+    idle: "Idle",
+    running: "Active",
+    success: "Success",
+    paused: "Paused"
+  };
+
+  const colorAccents = {
+    purple: "text-purple-400 bg-purple-500/10",
+    green: "text-emerald-400 bg-emerald-500/10",
+    blue: "text-blue-400 bg-blue-500/10",
+    orange: "text-amber-400 bg-amber-500/10",
+    pink: "text-pink-400 bg-pink-500/10"
+  };
+
+  return (
+    <div className={`w-[170px] h-[65px] rounded-xl border p-2.5 flex flex-col justify-between select-none transition-all duration-300 text-[10px] ${statusColors[status]}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${colorAccents[colorClass as keyof typeof colorAccents]}`}>
+            <Icon className="w-3 h-3" />
+          </div>
+          <span className="font-bold text-zinc-200 truncate">{title}</span>
+        </div>
+        {badgeText && (
+          <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-white/5 text-[8px] font-medium text-zinc-400 shrink-0">
+            {badgeText}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between text-[8px]">
+        <span className="text-zinc-500 font-mono truncate max-w-[90px]">{subtext}</span>
+        <div className="flex items-center gap-1">
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            status === "success" ? "bg-emerald-500" :
+            status === "running" ? "bg-blue-500 animate-ping" :
+            status === "paused" ? "bg-amber-500 animate-pulse" : "bg-zinc-700"
+          }`} />
+          <span className="font-bold text-zinc-400 uppercase tracking-wider">{statusText[status]}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionLine({
+  d,
+  active
+}: {
+  d: string;
+  active: boolean;
+}) {
+  return (
+    <>
+      <path
+        d={d}
+        fill="none"
+        stroke="rgba(255,255,255,0.02)"
+        strokeWidth="3"
+      />
+      <path
+        d={d}
+        fill="none"
+        stroke={active ? "#8B5CF6" : "rgba(255,255,255,0.06)"}
+        strokeWidth="1.5"
+        className={active ? "connector-active" : ""}
+        style={{
+          transition: "stroke 0.3s ease"
+        }}
+      />
+    </>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading, signOut } = useAuth();
@@ -489,106 +585,194 @@ export default function HomePage() {
       </section>
 
       {/* INTERACTIVE WORKFLOW SANDBOX */}
-      <section id="playground" className="py-24 bg-gradient-to-b from-[#020205] to-[#09090c] border-t border-white/5 relative">
+      <section id="playground" className="py-24 bg-[#050409] border-t border-white/5 relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4 bg-gradient-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
               Interactive Workflow Sandbox
             </h2>
             <p className="text-zinc-400 max-w-2xl mx-auto">
-              Launch a demo run of our orchestrator. Watch how steps transition states and how the human-in-the-loop approval gate halts and resumes execution.
+              Launch a demo run of our visual orchestrator. Watch how steps execute in 2D space, transition states, and how the human-in-the-loop approval gate halts and resumes execution.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            {/* Control Panel / Pipeline Canvas */}
-            <div className="lg:col-span-5 flex flex-col gap-6">
-              <div className="glass rounded-3xl p-6 border border-white/5 flex-grow">
-                <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-3">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Workflow className="w-4 h-4 text-purple-400" />
-                    Pipeline Canvas
-                  </h3>
-                  <select
-                    value={selectedWorkflow}
-                    onChange={(e) => !simulating && setSelectedWorkflow(e.target.value)}
-                    disabled={simulating}
-                    className="bg-zinc-900 border border-white/10 text-xs rounded-lg px-2 py-1 text-zinc-300 focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="refund">Refund Automator</option>
-                    <option value="lead">Enterprise Lead Router</option>
-                  </select>
-                </div>
-
-                <div className="space-y-3 relative">
-                  {/* Flow steps visualizer */}
-                  {[
-                    { step: 1, name: "Webhook Inbound Trigger", desc: "Listens for POST events" },
-                    { step: 2, name: "Intent Analysis (Llama 3)", desc: "Classifies payload sentiment" },
-                    { step: 3, name: "Verify Threshold Check", desc: "Conditional logic branch" },
-                    { step: 4, name: "Admin Approval Gate", desc: "Human confirmation check" },
-                    { step: 5, name: "Provision SLA Sandbox", desc: "HTTP REST API trigger" },
-                    { step: 6, name: "Log Execution Status", desc: "PostgreSQL DB write" }
-                  ].map((item) => (
-                    <div
-                      key={item.step}
-                      className={`flex items-start gap-3 p-3 rounded-xl border text-xs transition-all relative ${
-                        simStep === item.step
-                          ? "bg-purple-500/10 border-purple-500/50 shadow-[0_0_15px_rgba(139,92,246,0.15)]"
-                          : simStep > item.step
-                          ? "bg-emerald-500/5 border-emerald-500/20 text-zinc-300"
-                          : "bg-zinc-950/20 border-white/5 text-zinc-500"
-                      }`}
-                    >
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold border mt-0.5 shrink-0 transition-colors ${
-                        simStep === item.step
-                          ? "border-purple-400 bg-purple-500/30 text-white animate-pulse"
-                          : simStep > item.step
-                          ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
-                          : "border-zinc-800 bg-zinc-900"
-                      }`}>
-                        {simStep > item.step ? <Check className="w-3.5 h-3.5" /> : item.step}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-zinc-200">{item.name}</div>
-                        <div className={`text-[10px] mt-0.5 ${simStep === item.step ? "text-purple-300" : "text-zinc-500"}`}>
-                          {item.desc}
-                        </div>
-                      </div>
-                      {simStep === item.step && item.step === 4 && (
-                        <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] uppercase font-bold tracking-wider animate-bounce">
-                          Paused
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                  <button
-                    onClick={startSimulation}
-                    disabled={simulating}
-                    className="flex-grow btn-primary justify-center py-3.5 rounded-xl hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-50"
-                  >
-                    {simulating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-purple-300" />
-                        Running Pipeline...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4 fill-current" />
-                        Run Workflow
-                      </>
-                    )}
-                  </button>
-                </div>
+          {/* VISUAL CANVAS CONTAINER */}
+          <div className="glass rounded-3xl p-6 border border-white/5 overflow-x-auto relative mb-8 shadow-2xl shadow-purple-950/20 bg-[#07060f]/90">
+            {/* Header toolbar */}
+            <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+              <div className="flex items-center gap-3">
+                <Workflow className="w-5 h-5 text-purple-400" />
+                <span className="text-sm font-bold text-zinc-200">
+                  {selectedWorkflow === "refund" ? "Customer Refund Automator" : "Enterprise Lead Router"}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-[10px] font-semibold text-purple-400">
+                  Visual Canvas
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-zinc-500 font-mono">Zoom: 100%</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Canvas Ready</span>
               </div>
             </div>
 
-            {/* Terminal Log Console & Human Approval Dialog */}
-            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
-              <div className="glass rounded-3xl border border-white/5 overflow-hidden flex flex-col flex-grow min-h-[380px] shadow-2xl">
+            {/* Scrollable node canvas */}
+            <div className="relative min-w-[850px] h-[380px] bg-[#09090e]/40 border border-white/5 rounded-2xl overflow-hidden p-2 select-none">
+              {/* SVG connection lines */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                {/* 1. Webhook -> Extract */}
+                <ConnectionLine
+                  d="M 190 72.5 L 240 72.5"
+                  active={simStep >= 2}
+                />
+                {/* 2. Extract -> Llama 3 Agent */}
+                <ConnectionLine
+                  d="M 410 72.5 C 470 72.5, 20 242.5, 80 242.5"
+                  active={simStep >= 3}
+                />
+                {/* 3. Llama 3 -> Conditional */}
+                <ConnectionLine
+                  d="M 250 242.5 L 310 242.5"
+                  active={simStep >= 4}
+                />
+                {/* 4. Conditional -> Slack (Branch 1) */}
+                <ConnectionLine
+                  d="M 480 227.5 C 510 227.5, 530 52.5, 560 52.5"
+                  active={selectedWorkflow === "lead" && simStep >= 5}
+                />
+                {/* 5. Conditional -> CRM (Branch 1) */}
+                <ConnectionLine
+                  d="M 480 227.5 C 510 227.5, 530 142.5, 560 142.5"
+                  active={selectedWorkflow === "lead" && simStep >= 5}
+                />
+                {/* 6. Conditional -> Email (Branch 2) */}
+                <ConnectionLine
+                  d="M 480 257.5 C 510 257.5, 530 232.5, 560 232.5"
+                  active={selectedWorkflow === "refund" && (simStep >= 5 || (simStep === 4 && awaitingApproval))}
+                />
+                {/* 7. Conditional -> Log (Branch 2) */}
+                <ConnectionLine
+                  d="M 480 257.5 C 510 257.5, 530 322.5, 560 322.5"
+                  active={selectedWorkflow === "refund" && simStep >= 6}
+                />
+              </svg>
+
+              {/* absolute positioned nodes */}
+              
+              {/* Webhook Trigger */}
+              <div className="absolute" style={{ left: "20px", top: "40px" }}>
+                <NodeCard
+                  title="Webhook Trigger"
+                  subtext={simStep >= 2 ? "Success (0.1s)" : simStep === 1 ? "Listening..." : "Trigger Port"}
+                  icon={Zap}
+                  status={simStep === 1 ? "running" : simStep >= 2 ? "success" : "idle"}
+                  colorClass="purple"
+                  badgeText="Webhook"
+                />
+              </div>
+
+              {/* Extract Content */}
+              <div className="absolute" style={{ left: "240px", top: "40px" }}>
+                <NodeCard
+                  title="Extract Content"
+                  subtext={simStep >= 3 ? "Success (1.2s)" : simStep === 2 ? "Extracting..." : "JSON payload"}
+                  icon={Layers}
+                  status={simStep === 2 ? "running" : simStep >= 3 ? "success" : "idle"}
+                  colorClass="green"
+                  badgeText="Logic"
+                />
+              </div>
+
+              {/* Llama 3 Agent */}
+              <div className="absolute" style={{ left: "80px", top: "210px" }}>
+                <NodeCard
+                  title="Llama 3 Agent"
+                  subtext={simStep >= 4 ? "Success (245ms)" : simStep === 3 ? "Analyzing intent..." : "LLM Inference"}
+                  icon={Cpu}
+                  status={simStep === 3 ? "running" : simStep >= 4 ? "success" : "idle"}
+                  colorClass="blue"
+                  badgeText="Agent"
+                />
+              </div>
+
+              {/* Conditional Branch */}
+              <div className="absolute" style={{ left: "310px", top: "210px" }}>
+                <NodeCard
+                  title="Conditional Branch"
+                  subtext={simStep >= 5 ? "Split evaluated" : "Check amount"}
+                  icon={Network}
+                  status={simStep === 4 && !awaitingApproval ? "running" : simStep >= 5 ? "success" : "idle"}
+                  colorClass="purple"
+                  badgeText="Branch"
+                />
+              </div>
+
+              {/* branch tags */}
+              <div className="absolute font-semibold text-[8px] tracking-wider uppercase text-purple-400 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded" style={{ left: "490px", top: "110px" }}>
+                Branch 1
+              </div>
+              <div className="absolute font-semibold text-[8px] tracking-wider uppercase text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded" style={{ left: "490px", top: "280px" }}>
+                Branch 2
+              </div>
+
+              {/* STACK COLUMN (Nodes 5, 6, 7, 8) */}
+
+              {/* Slack Notification (Branch 1) */}
+              <div className="absolute transition-opacity duration-300" style={{ left: "580px", top: "20px", opacity: selectedWorkflow === "lead" ? 1 : 0.2 }}>
+                <NodeCard
+                  title="Slack Notification"
+                  subtext={selectedWorkflow === "lead" && simStep >= 6 ? "Success" : "#urgent-channel"}
+                  icon={Terminal}
+                  status={selectedWorkflow === "lead" && simStep === 5 ? "running" : selectedWorkflow === "lead" && simStep >= 6 ? "success" : "idle"}
+                  colorClass="pink"
+                  badgeText="Action"
+                />
+              </div>
+
+              {/* Save to CRM (Branch 1) */}
+              <div className="absolute transition-opacity duration-300" style={{ left: "580px", top: "110px", opacity: selectedWorkflow === "lead" ? 1 : 0.2 }}>
+                <NodeCard
+                  title="Save to CRM"
+                  subtext={selectedWorkflow === "lead" && simStep >= 6 ? "Success" : "Database write"}
+                  icon={Database}
+                  status={selectedWorkflow === "lead" && simStep === 5 ? "running" : selectedWorkflow === "lead" && simStep >= 6 ? "success" : "idle"}
+                  colorClass="blue"
+                  badgeText="DB"
+                />
+              </div>
+
+              {/* Email Auto-Reply (Branch 2) */}
+              <div className="absolute transition-opacity duration-300" style={{ left: "580px", top: "200px", opacity: selectedWorkflow === "refund" ? 1 : 0.2 }}>
+                <NodeCard
+                  title="Email Auto-Reply"
+                  subtext={selectedWorkflow === "refund" && simStep >= 5 ? "Approved" : selectedWorkflow === "refund" && simStep === 4 && awaitingApproval ? "Paused" : "Standard Response"}
+                  icon={Phone}
+                  status={selectedWorkflow === "refund" && simStep === 4 && awaitingApproval ? "paused" : selectedWorkflow === "refund" && simStep >= 5 ? "success" : "idle"}
+                  colorClass="orange"
+                  badgeText={selectedWorkflow === "refund" && simStep === 4 && awaitingApproval ? "Awaiting" : undefined}
+                />
+              </div>
+
+              {/* Log Issue (Branch 2) */}
+              <div className="absolute transition-opacity duration-300" style={{ left: "580px", top: "290px", opacity: selectedWorkflow === "refund" ? 1 : 0.2 }}>
+                <NodeCard
+                  title="Log Issue"
+                  subtext={selectedWorkflow === "refund" && simStep >= 6 ? "Success" : "DB Update"}
+                  icon={Activity}
+                  status={selectedWorkflow === "refund" && simStep === 5 ? "running" : selectedWorkflow === "refund" && simStep >= 6 ? "success" : "idle"}
+                  colorClass="green"
+                  badgeText="DB"
+                />
+              </div>
+
+            </div>
+          </div>
+
+          {/* CONSOLE AND CONTROLS SUB-GRID */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+            {/* Terminal Log Console */}
+            <div className="lg:col-span-8 flex flex-col">
+              <div className="glass rounded-3xl border border-white/5 overflow-hidden flex flex-col flex-grow min-h-[350px] shadow-2xl bg-zinc-950/40">
                 {/* Console header */}
                 <div className="bg-zinc-950/60 px-6 py-4 border-b border-white/5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -606,10 +790,10 @@ export default function HomePage() {
                 {/* Console Output */}
                 <div
                   ref={logContainerRef}
-                  className="flex-grow p-6 bg-zinc-950/40 font-mono text-xs overflow-y-auto space-y-3 max-h-[380px]"
+                  className="flex-grow p-6 bg-zinc-950/20 font-mono text-xs overflow-y-auto space-y-3 max-h-[350px]"
                 >
                   {logs.length === 0 ? (
-                    <div className="h-full flex items-center justify-center flex-col text-zinc-600 gap-2 min-h-[250px]">
+                    <div className="h-full flex items-center justify-center flex-col text-zinc-600 gap-2 min-h-[220px]">
                       <Terminal className="w-8 h-8 opacity-20" />
                       <p className="text-xs">Click &quot;Run Workflow&quot; to test the visual orchestrator execution</p>
                     </div>
@@ -633,36 +817,78 @@ export default function HomePage() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Controls Panel & Human Approval Dialog */}
+            <div className="lg:col-span-4 flex flex-col justify-between gap-6">
+              <div className="glass rounded-3xl p-6 border border-white/5 flex flex-col justify-between flex-grow bg-zinc-950/20">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-purple-400" />
+                    Simulator Controls
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Choose one of the presets and trigger the run. Watch how steps in the canvas respond to real-time status transitions.
+                  </p>
+
+                  <div className="space-y-2 border-t border-white/5 pt-4">
+                    <span className="block text-[10px] font-medium text-zinc-500">Selected Workflow Preset:</span>
+                    <div className="px-3 py-2 bg-zinc-900 border border-white/5 rounded-lg text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                      {selectedWorkflow === "refund" ? "Refund Automator" : "Enterprise Lead Router"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 space-y-4">
+                  <button
+                    onClick={startSimulation}
+                    disabled={simulating}
+                    className="w-full btn-primary justify-center py-3.5 rounded-xl hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-50 text-xs font-bold"
+                  >
+                    {simulating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-purple-300" />
+                        Running Pipeline...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        Run Workflow
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
 
               {/* HUMAN APPROVAL POPUP */}
               <AnimatePresence>
                 {awaitingApproval && (
                   <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 15 }}
-                    className="glass border border-amber-500/30 rounded-3xl p-5 bg-amber-500/5 shadow-[0_4px_30px_rgba(245,158,11,0.1)] flex flex-col md:flex-row items-center justify-between gap-4"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="glass border border-amber-500/30 rounded-3xl p-5 bg-amber-500/5 shadow-[0_4px_30px_rgba(245,158,11,0.15)] flex flex-col gap-4"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-                        <AlertCircle className="w-5 h-5 animate-pulse" />
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                        <AlertCircle className="w-4 h-4 animate-pulse" />
                       </div>
                       <div>
-                        <div className="text-sm font-bold text-zinc-100">Step Run #SR-88402 Awaiting Approval</div>
-                        <p className="text-xs text-zinc-400 mt-0.5">
+                        <div className="text-xs font-bold text-zinc-100">Action Awaiting Owner Approval</div>
+                        <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">
                           {selectedWorkflow === "refund"
-                            ? "Action 'Refund payout' (Amount: $650.00) exceeds automatic limits."
-                            : "Action 'Provision enterprise sandbox' requires custom SDR review."}
+                            ? "Action 'Refund payout' (Amount: $650.00) exceeds automatic thresholds."
+                            : "Action 'Provision enterprise sandbox' requires direct approval."}
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-2 w-full md:w-auto">
+                    <div className="flex gap-2">
                       <button
                         onClick={handleApproveSimStep}
-                        className="flex-grow md:flex-grow-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black cursor-pointer transition-all"
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black cursor-pointer transition-all"
                       >
                         <ThumbsUp className="w-3.5 h-3.5" />
-                        Approve Step
+                        Approve Step Run
                       </button>
                     </div>
                   </motion.div>
