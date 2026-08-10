@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_NHOST_SUBDOMAIN": "@nhost_subdomain",
+    "NEXT_PUBLIC_NHOST_REGION": "@nhost_region",
+    "NEXT_PUBLIC_NHOST_GRAPHQL_URL": "@nhost_graphql_url",
+    "NHOST_GRAPHQL_URL": "@nhost_graphql_url",
+    "NHOST_ADMIN_SECRET": "@nhost_admin_secret",
+    "GROQ_API_KEY": "@groq_api_key",
+    "WORKFLOW_WEBHOOK_SECRET": "@workflow_webhook_secret",
+    "NHOST_FUNCTIONS_URL": "@nhost_functions_url"
+  }
+}

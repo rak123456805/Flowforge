@@ -1,0 +1,87 @@
+actions:
+  - name: triggerWorkflowRun
+    definition:
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/triggerWorkflowRun"
+      timeout: 300
+      request_transform:
+        method: POST
+        content_type: application/json
+    comment: >
+      Triggers a workflow execution. Verifies org membership + role,
+      checks quota, runs steps sequentially (with retry), handles
+      approval_gate pauses. Enforces Layer 2 step-level gating.
+    permissions:
+      - role: owner
+      - role: editor
+    output_type: TriggerWorkflowRunOutput
+    arguments:
+      - name: workflow_id
+        type: uuid!
+
+  - name: approveStep
+    definition:
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/approveStep"
+      timeout: 300
+      request_transform:
+        method: POST
+        content_type: application/json
+    comment: >
+      Approves a paused approval_gate step_run. Verifies that the
+      approver is owner or editor in the workflow's org before resuming.
+    permissions:
+      - role: owner
+      - role: editor
+    output_type: ApproveStepOutput
+    arguments:
+      - name: step_run_id
+        type: uuid!
+
+  - name: webhookTrigger
+    definition:
+      kind: synchronous
+      handler: "{{NHOST_FUNCTIONS_URL}}/webhookTrigger"
+      timeout: 120
+      request_transform:
+        method: POST
+        content_type: application/json
+    comment: >
+      Public webhook endpoint. Validates inbound WORKFLOW_WEBHOOK_SECRET
+      header before starting a run. No JWT required — auth is via shared secret.
+    # No role restriction — webhook handler validates via secret header
+    output_type: WebhookTriggerOutput
+    arguments:
+      - name: workflow_id
+        type: uuid!
+      - name: secret
+        type: String!
+
+custom_types:
+  objects:
+    - name: TriggerWorkflowRunOutput
+      fields:
+        - name: workflow_run_id
+          type: uuid!
+        - name: status
+          type: String!
+        - name: message
+          type: String!
+
+    - name: ApproveStepOutput
+      fields:
+        - name: step_run_id
+          type: uuid!
+        - name: workflow_run_id
+          type: uuid!
+        - name: status
+          type: String!
+        - name: message
+          type: String!
+
+    - name: WebhookTriggerOutput
+      fields:
+        - name: workflow_run_id
+          type: uuid!
+        - name: status
+          type: String!
