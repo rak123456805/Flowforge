@@ -423,7 +423,7 @@ async function executeConditionalBranch(
   try {
     const conditionFn = new Function(
       "context",
-      `"use strict"; with(context) { return Boolean(${config.condition}); }`
+      `with(context) { return Boolean(${config.condition}); }`
     );
     result = conditionFn(context) as boolean;
   } catch (err) {
