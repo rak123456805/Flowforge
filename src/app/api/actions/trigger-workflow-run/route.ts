@@ -372,14 +372,14 @@ export async function POST(req: NextRequest) {
 
     // 2. Quota check
     const quotaData = await hasuraAdmin<{
-      organizations_by_pk: { max_quota_per_month: number; current_month_usage: number } | null;
+      organization: { max_quota_per_month: number; current_month_usage: number } | null;
     }>(
       `query QuotaCheck($orgId: uuid!) {
-        organizations_by_pk(id: $orgId) { max_quota_per_month current_month_usage }
+        organization(id: $orgId) { max_quota_per_month current_month_usage }
       }`,
       { orgId }
     );
-    const org = quotaData.organizations_by_pk;
+    const org = quotaData.organization;
     if (!org) return NextResponse.json({ message: "Organization not found" }, { status: 404 });
     if (org.current_month_usage >= org.max_quota_per_month) {
       return NextResponse.json({
@@ -489,7 +489,7 @@ export async function POST(req: NextRequest) {
       { id: runId }
     );
     await hasuraAdmin(
-      `mutation IncrementUsage($orgId: uuid!) { update_organizations_by_pk(pk_columns: { id: $orgId }, _inc: { current_month_usage: 1 }) { current_month_usage } }`,
+      `mutation IncrementUsage($orgId: uuid!) { update_organization(pk_columns: { id: $orgId }, _inc: { current_month_usage: 1 }) { current_month_usage } }`,
       { orgId }
     );
 
