@@ -7,6 +7,7 @@
  * permissions alone since it's a mid-execution decision.
  */
 
+import type { Request, Response } from "express";
 import {
   hasuraAdmin,
   getUserOrgRole,
@@ -15,21 +16,19 @@ import {
   type HasuraActionPayload,
 } from "../shared/utils";
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") return errorResponse("Method not allowed", 405);
+export default async function handler(req: Request, res: Response): Promise<unknown> {
+  if (req.method !== "POST") return errorResponse(res, "Method not allowed", 405);
 
-  let payload: HasuraActionPayload<{ step_run_id: string }>;
-  try {
-    payload = await req.json();
-  } catch {
-    return errorResponse("Invalid JSON payload", 400);
+  const payload = req.body as HasuraActionPayload<{ step_run_id: string }>;
+  if (!payload || !payload.session_variables || !payload.input) {
+    return errorResponse(res, "Invalid JSON payload", 400);
   }
 
   const userId = payload.session_variables["x-hasura-user-id"];
   const stepRunId = payload.input.step_run_id;
 
   if (!userId || !stepRunId) {
-    return errorResponse("Missing required fields", 400);
+    return errorResponse(res, "Missing required fields", 400);
   }
 
   try {
@@ -70,11 +69,12 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const stepRun = data.step_runs_by_pk;
-    if (!stepRun) return errorResponse("Step run not found", 404);
+    if (!stepRun) return errorResponse(res, "Step run not found", 404);
 
     // ── 2. Verify it's actually an approval_gate step ────────────────────
     if (stepRun.step.type !== "approval_gate") {
       return errorResponse(
+        res,
         `Step type '${stepRun.step.type}' is not an approval_gate. Only approval_gate steps can be approved.`,
         400
       );
@@ -83,6 +83,7 @@ export default async function handler(req: Request): Promise<Response> {
     // ── 3. Verify step is paused ─────────────────────────────────────────
     if (stepRun.status !== "paused") {
       return errorResponse(
+        res,
         `Step run is '${stepRun.status}', not 'paused'. Cannot approve.`,
         400
       );
@@ -90,6 +91,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (stepRun.workflow_run.status !== "paused") {
       return errorResponse(
+        res,
         `Workflow run is '${stepRun.workflow_run.status}', not 'paused'. Cannot approve.`,
         400
       );
@@ -101,6 +103,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!memberRole) {
       return errorResponse(
+        res,
         "You are not a member of the organization that owns this workflow.",
         403
       );
@@ -108,6 +111,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (memberRole === "viewer") {
       return errorResponse(
+        res,
         "Viewers cannot approve steps. Owner or Editor role required.",
         403
       );
@@ -200,7 +204,7 @@ export default async function handler(req: Request): Promise<Response> {
         { id: runId }
       );
 
-      return successResponse({
+      return successResponse(res, {
         step_run_id: stepRunId,
         workflow_run_id: runId,
         status: "completed",
@@ -234,7 +238,7 @@ export default async function handler(req: Request): Promise<Response> {
       console.error("[approveStep] Resume trigger failed:", await triggerRes.text());
     }
 
-    return successResponse({
+    return successResponse(res, {
       step_run_id: stepRunId,
       workflow_run_id: runId,
       status: "resuming",
@@ -243,6 +247,7 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (err) {
     console.error("[approveStep] Error:", err);
     return errorResponse(
+      res,
       err instanceof Error ? err.message : "Internal server error",
       500
     );

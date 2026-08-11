@@ -11,6 +11,7 @@
  *    step types (db_write, notify) and webhook triggers (owner-only).
  */
 
+import type { Request, Response } from "express";
 import {
   hasuraAdmin,
   getUserOrgRole,
@@ -29,16 +30,14 @@ import {
 // Main Handler
 // ============================================================
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, res: Response): Promise<unknown> {
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse(res, "Method not allowed", 405);
   }
 
-  let payload: HasuraActionPayload<{ workflow_id: string }>;
-  try {
-    payload = await req.json();
-  } catch {
-    return errorResponse("Invalid JSON payload", 400);
+  const payload = req.body as HasuraActionPayload<{ workflow_id: string }>;
+  if (!payload || !payload.session_variables || !payload.input) {
+    return errorResponse(res, "Invalid JSON payload", 400);
   }
 
   const userId = payload.session_variables["x-hasura-user-id"];
@@ -49,12 +48,12 @@ export default async function handler(req: Request): Promise<Response> {
   const workflowId = payload.input.workflow_id;
 
   if (!userId || !workflowId) {
-    return errorResponse("Missing required fields", 400);
+    return errorResponse(res, "Missing required fields", 400);
   }
 
   // ── Viewers can never trigger a run ──────────────────────────────────────
   if (callerRole === "viewer") {
-    return errorResponse("Viewers cannot trigger workflow runs", 403);
+    return errorResponse(res, "Viewers cannot trigger workflow runs", 403);
   }
 
   try {
@@ -64,6 +63,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!memberRole || memberRole === "viewer") {
       return errorResponse(
+        res,
         "You are not authorized to trigger runs in this organization",
         403
       );
@@ -86,10 +86,11 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const org = orgData.organizations_by_pk;
-    if (!org) return errorResponse("Organization not found", 404);
+    if (!org) return errorResponse(res, "Organization not found", 404);
 
     if (org.current_month_usage >= org.max_quota_per_month) {
       return errorResponse(
+        res,
         `Monthly quota exhausted: ${org.current_month_usage}/${org.max_quota_per_month} runs used. Upgrade your plan or wait for next month.`,
         429
       );
@@ -121,9 +122,9 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const workflow = workflowData.workflows_by_pk;
-    if (!workflow) return errorResponse("Workflow not found", 404);
+    if (!workflow) return errorResponse(res, "Workflow not found", 404);
     if (!workflow.is_active)
-      return errorResponse("Workflow is not active", 400);
+      return errorResponse(res, "Workflow is not active", 400);
 
     // ── 4. Layer 2: Pre-flight step-level permission gating ───────────────
     // Editors cannot execute workflows containing db_write or notify steps.
@@ -133,6 +134,7 @@ export default async function handler(req: Request): Promise<Response> {
       );
       if (restrictedSteps.length > 0) {
         return errorResponse(
+          res,
           `This workflow contains high-privilege step types (${restrictedSteps.map((s) => s.type).join(", ")}) that require Owner role to execute.`,
           403
         );
@@ -205,7 +207,7 @@ export default async function handler(req: Request): Promise<Response> {
             { id: runId }
           );
 
-          return successResponse({
+          return successResponse(res, {
             workflow_run_id: runId,
             status: "paused",
             message: `Workflow paused at approval_gate step: ${step.id}. Awaiting approval.`,
@@ -249,7 +251,7 @@ export default async function handler(req: Request): Promise<Response> {
           { id: runId }
         );
 
-        return successResponse({
+        return successResponse(res, {
           workflow_run_id: runId,
           status: "failed",
           message: `Workflow failed at step ${step.step_order}: ${stepError}`,
@@ -277,7 +279,7 @@ export default async function handler(req: Request): Promise<Response> {
       { orgId }
     );
 
-    return successResponse({
+    return successResponse(res, {
       workflow_run_id: runId,
       status: "completed",
       message: "Workflow completed successfully.",
@@ -285,6 +287,7 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (err) {
     console.error("[triggerWorkflowRun] Unexpected error:", err);
     return errorResponse(
+      res,
       err instanceof Error ? err.message : "Internal server error",
       500
     );

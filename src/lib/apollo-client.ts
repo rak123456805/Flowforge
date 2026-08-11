@@ -14,6 +14,8 @@ const GRAPHQL_URL =
   process.env.NEXT_PUBLIC_NHOST_GRAPHQL_URL ??
   `https://${process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.NEXT_PUBLIC_NHOST_REGION ?? "eu-central-1"}.nhost.run/v1/graphql`;
 
+console.log("DEBUG: apollo-client GRAPHQL_URL =", GRAPHQL_URL);
+
 const WS_URL = GRAPHQL_URL.replace(/^http/, "ws");
 
 // ── HTTP Link ──────────────────────────────────────────────────────────────

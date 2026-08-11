@@ -1,5 +1,7 @@
 import { NhostClient } from "@nhost/react";
 
+console.log("DEBUG: nhost subdomain =", process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN, "region =", process.env.NEXT_PUBLIC_NHOST_REGION);
+
 export const nhost = new NhostClient({
   subdomain: process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN ?? "local",
   region: process.env.NEXT_PUBLIC_NHOST_REGION ?? "eu-central-1",

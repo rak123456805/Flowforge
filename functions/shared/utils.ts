@@ -217,20 +217,16 @@ export function interpolateTemplate(
   });
 }
 
+import type { Response } from "express";
+
 // ============================================================
 // Standard error response builder
 // ============================================================
 
-export function errorResponse(message: string, statusCode = 400) {
-  return new Response(JSON.stringify({ message }), {
-    status: statusCode,
-    headers: { "Content-Type": "application/json" },
-  });
+export function errorResponse(res: Response, message: string, statusCode = 400) {
+  return res.status(statusCode).json({ message });
 }
 
-export function successResponse(data: unknown) {
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+export function successResponse(res: Response, data: unknown) {
+  return res.status(200).json(data);
 }

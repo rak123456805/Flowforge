@@ -6,40 +6,39 @@
  * Uses admin role for all internal mutations.
  */
 
+import type { Request, Response } from "express";
 import {
   hasuraAdmin,
   errorResponse,
   successResponse,
 } from "../shared/utils";
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") return errorResponse("Method not allowed", 405);
+export default async function handler(req: Request, res: Response): Promise<unknown> {
+  if (req.method !== "POST") return errorResponse(res, "Method not allowed", 405);
 
   // ── 1. Validate webhook secret ────────────────────────────────────────
-  const incomingSecret = req.headers.get("x-workflow-webhook-secret");
+  const incomingSecret = req.headers["x-workflow-webhook-secret"] as string;
   const expectedSecret = process.env.WORKFLOW_WEBHOOK_SECRET;
 
   if (!expectedSecret) {
     console.error("[webhookTrigger] WORKFLOW_WEBHOOK_SECRET not configured");
-    return errorResponse("Webhook endpoint not configured", 500);
+    return errorResponse(res, "Webhook endpoint not configured", 500);
   }
 
   if (!incomingSecret || incomingSecret !== expectedSecret) {
-    return errorResponse("Invalid or missing webhook secret", 401);
+    return errorResponse(res, "Invalid or missing webhook secret", 401);
   }
 
   // ── 2. Parse payload ──────────────────────────────────────────────────
-  let body: { workflow_id: string; payload?: Record<string, unknown> };
-  try {
-    body = await req.json();
-  } catch {
-    return errorResponse("Invalid JSON payload", 400);
+  const body = req.body as { workflow_id: string; payload?: Record<string, unknown> };
+  if (!body) {
+    return errorResponse(res, "Invalid JSON payload", 400);
   }
 
   const { workflow_id: workflowId, payload: incomingPayload = {} } = body;
 
   if (!workflowId) {
-    return errorResponse("workflow_id is required", 400);
+    return errorResponse(res, "workflow_id is required", 400);
   }
 
   try {
@@ -74,8 +73,8 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const workflow = workflowData.workflows_by_pk;
-    if (!workflow) return errorResponse("Workflow not found", 404);
-    if (!workflow.is_active) return errorResponse("Workflow is not active", 400);
+    if (!workflow) return errorResponse(res, "Workflow not found", 404);
+    if (!workflow.is_active) return errorResponse(res, "Workflow is not active", 400);
 
     // ── 4. Check quota ────────────────────────────────────────────────────
     const orgData = await hasuraAdmin<{
@@ -94,9 +93,10 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
     const org = orgData.organizations_by_pk;
-    if (!org) return errorResponse("Organization not found", 404);
+    if (!org) return errorResponse(res, "Organization not found", 404);
     if (org.current_month_usage >= org.max_quota_per_month) {
       return errorResponse(
+        res,
         `Monthly quota exhausted: ${org.current_month_usage}/${org.max_quota_per_month}`,
         429
       );
@@ -139,7 +139,7 @@ export default async function handler(req: Request): Promise<Response> {
       console.error("[webhookTrigger] Fire-and-forget execution failed:", err);
     });
 
-    return successResponse({
+    return successResponse(res, {
       workflow_run_id: runId,
       status: "running",
       message: "Workflow triggered via webhook. Execution started.",
@@ -147,6 +147,7 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (err) {
     console.error("[webhookTrigger] Error:", err);
     return errorResponse(
+      res,
       err instanceof Error ? err.message : "Internal server error",
       500
     );
