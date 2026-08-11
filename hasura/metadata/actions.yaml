@@ -4,11 +4,15 @@ actions:
       kind: synchronous
       handler: https://amxtepxfuwlmdkhwfjpn.functions.ap-south-1.nhost.run/v0/functions/approveStep
       timeout: 300
+    permissions:
+      - role: user
   - name: triggerWorkflowRun
     definition:
       kind: synchronous
-      handler: https://amxtepxfuwlmdkhwfjpn.functions.ap-south-1.nhost.run/v0/functions/triggerWorkflowRun
+      handler: https://flowforge-rose.vercel.app/api/actions/trigger-workflow-run
       timeout: 300
+    permissions:
+      - role: user
   - name: webhookTrigger
     definition:
       kind: synchronous
