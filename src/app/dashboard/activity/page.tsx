@@ -12,9 +12,8 @@ import {
   Clock,
   Loader2,
   GitBranch,
-  Zap,
 } from "lucide-react";
-import { formatDate, formatDuration, getStatusBg } from "@/lib/utils";
+import { formatDuration, getStatusBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { WorkflowRun } from "@/lib/types";
 import Link from "next/link";
@@ -38,7 +37,7 @@ export default function ActivityPage() {
   const { data, loading } = useQuery(GET_ALL_RUNS, {
     variables: { orgId: activeOrg?.id },
     skip: !activeOrg,
-    pollInterval: 8000,
+    pollInterval: 5000,
   });
 
   const runs: (WorkflowRun & { workflow?: { id: string; name: string } })[] =
@@ -90,10 +89,7 @@ export default function ActivityPage() {
         ].map((s) => (
           <div
             key={s.label}
-            className={cn(
-              "rounded-xl px-4 py-3 border",
-              s.bg
-            )}
+            className={cn("rounded-xl px-4 py-3 border", s.bg)}
           >
             <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
             <p className="text-xs text-zinc-500 mt-0.5">{s.label}</p>
@@ -124,7 +120,7 @@ export default function ActivityPage() {
         </motion.div>
       ) : (
         <div className="space-y-8">
-          {Object.entries(grouped).map(([date, dateRuns], groupIdx) => (
+          {Object.entries(grouped).map(([date, dateRuns]) => (
             <motion.div
               key={date}
               initial="hidden"
@@ -142,44 +138,30 @@ export default function ActivityPage() {
 
               {/* Timeline entries */}
               <div className="relative pl-5">
-                {/* Vertical line */}
                 <div className="absolute left-[7px] top-2 bottom-2 w-px bg-zinc-800" />
-
                 <div className="space-y-1">
-                  {dateRuns.map((run, i) => {
+                  {dateRuns.map((run) => {
                     const StatusIcon = STATUS_ICONS[run.status] ?? Activity;
                     return (
-                      <motion.div
-                        key={run.id}
-                        variants={fadeUp}
-                        className="relative"
-                      >
+                      <motion.div key={run.id} variants={fadeUp} className="relative">
                         {/* Timeline dot */}
                         <div
                           className={cn(
-                            "absolute -left-[13px] top-3.5 w-3.5 h-3.5 rounded-full border-2 border-zinc-950 flex items-center justify-center",
-                            run.status === "completed"
-                              ? "bg-emerald-500"
-                              : run.status === "running"
-                                ? "bg-blue-500"
-                                : run.status === "paused"
-                                  ? "bg-amber-500"
-                                  : run.status === "failed"
-                                    ? "bg-rose-500"
-                                    : "bg-zinc-600"
+                            "absolute -left-[13px] top-3.5 w-3.5 h-3.5 rounded-full border-2 border-zinc-950",
+                            run.status === "completed" ? "bg-emerald-500" :
+                            run.status === "running" ? "bg-blue-500" :
+                            run.status === "paused" ? "bg-amber-500" :
+                            run.status === "failed" ? "bg-rose-500" : "bg-zinc-600"
                           )}
                         />
-
+                        {/* Click opens Run Monitor with this run's drawer */}
                         <Link
-                          href={`/dashboard/runs/${run.id}`}
+                          href={`/dashboard/runs?run=${run.id}`}
                           className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-zinc-800/40 transition-colors group ml-2"
                         >
-                          {/* Workflow icon */}
                           <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center flex-shrink-0 group-hover:border-violet-500/30 transition-colors">
                             <GitBranch className="w-3.5 h-3.5 text-zinc-500 group-hover:text-violet-400 transition-colors" />
                           </div>
-
-                          {/* Details */}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-zinc-200 truncate">
                               {run.workflow?.name ?? "Unknown Workflow"}
@@ -204,15 +186,8 @@ export default function ActivityPage() {
                               )}
                             </div>
                           </div>
-
-                          {/* Status badge */}
                           <span className={cn("badge text-xs flex-shrink-0", getStatusBg(run.status))}>
-                            <StatusIcon
-                              className={cn(
-                                "w-3 h-3",
-                                run.status === "running" && "animate-spin"
-                              )}
-                            />
+                            <StatusIcon className={cn("w-3 h-3", run.status === "running" && "animate-spin")} />
                             {run.status}
                           </span>
                         </Link>

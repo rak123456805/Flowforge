@@ -6,6 +6,7 @@ import {
   SUBSCRIBE_STEP_RUNS,
   SUBSCRIBE_WORKFLOW_RUN_STATUS,
   APPROVE_STEP,
+  CANCEL_WORKFLOW_RUN,
   GET_WORKFLOW_RUN_DETAIL,
 } from "@/lib/graphql";
 import {
@@ -25,6 +26,7 @@ import {
   ChevronUp,
   AlertTriangle,
   Lock,
+  StopCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -278,12 +280,27 @@ export function RunDetailDrawer({
     },
   });
 
+  const [cancelRun] = useMutation(CANCEL_WORKFLOW_RUN, {
+    onCompleted() {
+      toast.success("Workflow run cancelled.");
+    },
+    onError(e) {
+      toast.error(e.message);
+    },
+  });
+
   const run = subData?.workflow_runs_by_pk ?? initialData?.workflow_runs_by_pk;
   const stepRuns = stepRunsData?.step_runs ?? run?.step_runs ?? [];
 
   function handleApprove(stepRunId: string) {
     setApprovingId(stepRunId);
     approveStep({ variables: { stepRunId } });
+  }
+
+  function handleCancel() {
+    if (!run) return;
+    if (!confirm("Cancel this workflow run? This will mark it as failed.")) return;
+    cancelRun({ variables: { id: run.id } });
   }
 
   const completedSteps = stepRuns.filter((sr: StepRun) => sr.status === "completed").length;
@@ -316,12 +333,24 @@ export function RunDetailDrawer({
           </div>
           <p className="text-[10px] font-mono text-zinc-600">{runId}</p>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {run && (run.status === "running" || run.status === "paused") && userRole === "owner" && (
+            <button
+              onClick={handleCancel}
+              title="Cancel run"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/15 transition-colors"
+            >
+              <StopCircle className="w-3.5 h-3.5" />
+              Cancel
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Progress bar */}

@@ -320,6 +320,18 @@ export const APPROVE_STEP = gql`
   }
 `;
 
+export const CANCEL_WORKFLOW_RUN = gql`
+  mutation CancelWorkflowRun($id: uuid!) {
+    update_workflow_runs_by_pk(
+      pk_columns: { id: $id }
+      _set: { status: "failed", completed_at: "now()" }
+    ) {
+      id
+      status
+    }
+  }
+`;
+
 export const ADD_ORG_MEMBER = gql`
   mutation AddOrgMember($orgId: uuid!, $userId: uuid!, $role: String!) {
     insert_org_members_one(

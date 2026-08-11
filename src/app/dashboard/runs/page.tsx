@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@apollo/client";
 import { GET_ALL_RUNS } from "@/lib/graphql";
@@ -18,16 +19,23 @@ import type { WorkflowRun } from "@/lib/types";
 
 type FilterStatus = "all" | "running" | "paused" | "completed" | "failed" | "pending";
 
-export default function RunsPage() {
+function RunsPageInner() {
   const { activeOrg, activeRole } = useOrg();
+  const searchParams = useSearchParams();
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [search, setSearch] = useState("");
 
+  // Auto-open drawer if ?run=<id> is in the URL (coming from Activity page)
+  useEffect(() => {
+    const runParam = searchParams.get("run");
+    if (runParam) setActiveRunId(runParam);
+  }, [searchParams]);
+
   const { data, loading } = useQuery(GET_ALL_RUNS, {
     variables: { orgId: activeOrg?.id },
     skip: !activeOrg,
-    pollInterval: 5000, // also poll every 5s as fallback
+    pollInterval: 5000,
   });
 
   const allRuns: (WorkflowRun & { workflow?: { id: string; name: string } })[] =
@@ -164,5 +172,13 @@ export default function RunsPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function RunsPage() {
+  return (
+    <Suspense fallback={null}>
+      <RunsPageInner />
+    </Suspense>
   );
 }
