@@ -1,12 +1,12 @@
 /**
  * approveStep — Next.js API Route (Hasura Action Handler)
  *
- * Approves a paused approval_gate step_run. Verifies that the
- * approver holds owner or editor role in the workflow's org before
- * resuming. Mirrors functions/approveStep/index.ts but runs on Vercel.
+ * Approves a paused approval_gate step_run and executes all remaining steps inline.
+ * Verifies that the approver holds owner or editor role in the workflow's org.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import Groq from "groq-sdk";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -20,12 +20,20 @@ interface HasuraActionPayload {
   };
 }
 
+interface WorkflowStep {
+  id: string;
+  step_order: number;
+  type: "llm_call" | "http_request" | "db_write" | "notify" | "conditional_branch" | "approval_gate";
+  config: Record<string, unknown>;
+}
+
 // ── Hasura Admin Client ────────────────────────────────────────────────────
 
 const HASURA_ENDPOINT =
   process.env.NHOST_GRAPHQL_URL ||
   `https://${process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN}.hasura.${process.env.NEXT_PUBLIC_NHOST_REGION}.nhost.run/v1/graphql`;
 const HASURA_ADMIN_SECRET = process.env.NHOST_ADMIN_SECRET!;
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 async function hasuraAdmin<T = unknown>(
   query: string,
@@ -63,6 +71,113 @@ async function getUserOrgRole(
     { userId, orgId }
   );
   return (data.org_members[0]?.role as "owner" | "editor" | "viewer") ?? null;
+}
+
+// ── Helpers & Step Execution ──────────────────────────────────────────────
+
+function interpolateTemplate(template: string, context: Record<string, unknown>): string {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+    const parts = path.trim().split(".");
+    let val: unknown = context;
+    for (const part of parts) {
+      if (val && typeof val === "object") val = (val as Record<string, unknown>)[part];
+      else return `{{${path}}}`;
+    }
+    return val !== undefined ? String(val) : `{{${path}}}`;
+  });
+}
+
+function interpolateJsonTemplate(template: string, context: Record<string, unknown>): string {
+  return template.replace(/"\{\{([^}]+)\}\}"/g, (_, path: string) => {
+    const parts = path.trim().split(".");
+    let val: unknown = context;
+    for (const part of parts) {
+      if (val && typeof val === "object") val = (val as Record<string, unknown>)[part];
+      else return `"{{${path}}}"`;
+    }
+    if (val === undefined) return `"{{${path}}}"`;
+    return typeof val === "string" ? JSON.stringify(val) : JSON.stringify(val);
+  });
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, delayMs = 1500): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try { return await fn(); }
+    catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw lastError;
+}
+
+async function executeStep(step: WorkflowStep, context: Record<string, Record<string, unknown>>, callerRole: "owner" | "editor") {
+  switch (step.type) {
+    case "llm_call": {
+      const config = step.config as { prompt: string; system_prompt?: string; model?: string; temperature?: number; max_tokens?: number };
+      const prompt = interpolateTemplate(config.prompt, context as Record<string, unknown>);
+      const system = config.system_prompt ? interpolateTemplate(config.system_prompt, context as Record<string, unknown>) : "You are a helpful AI assistant.";
+      const response = await withRetry(async () => {
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! });
+        return groq.chat.completions.create({
+          model: config.model ?? GROQ_MODEL,
+          messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+          temperature: config.temperature ?? 0.7,
+          max_tokens: config.max_tokens ?? 1024,
+        });
+      });
+      return { output: { content: response.choices[0]?.message?.content ?? "", model: response.model }, paused: false };
+    }
+    case "http_request": {
+      const config = step.config as { url: string; method?: string; headers?: Record<string, string>; body_template?: string; timeout_ms?: number };
+      const url = interpolateTemplate(config.url, context as Record<string, unknown>);
+      const body = config.body_template ? interpolateJsonTemplate(config.body_template, context as Record<string, unknown>) : undefined;
+      const response = await withRetry(async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), config.timeout_ms ?? 30000);
+        try {
+          const r = await fetch(url, { method: config.method ?? "GET", headers: { "Content-Type": "application/json", ...(config.headers ?? {}) }, body: body ?? undefined, signal: controller.signal });
+          const text = await r.text();
+          let parsed: unknown = text;
+          try { parsed = JSON.parse(text); } catch { /* keep as text */ }
+          if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`);
+          return { status: r.status, body: parsed };
+        } finally { clearTimeout(timer); }
+      });
+      return { output: response as Record<string, unknown>, paused: false };
+    }
+    case "db_write": {
+      if (callerRole !== "owner") throw new Error("db_write steps require Owner role");
+      const config = step.config as { mutation: string; variables_template?: string };
+      const varsStr = config.variables_template ? interpolateJsonTemplate(config.variables_template, context as Record<string, unknown>) : "{}";
+      const vars = JSON.parse(varsStr) as Record<string, unknown>;
+      const result = await hasuraAdmin(config.mutation, vars);
+      return { output: result as Record<string, unknown>, paused: false };
+    }
+    case "notify": {
+      if (callerRole !== "owner") throw new Error("notify steps require Owner role");
+      const config = step.config as { channel: "slack" | "email" | "webhook"; url?: string; message_template: string; recipient?: string };
+      const message = interpolateTemplate(config.message_template, context as Record<string, unknown>);
+      if (config.channel === "slack" || config.channel === "webhook") {
+        if (!config.url) throw new Error("notify step requires a url");
+        const r = await fetch(config.url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: message }) });
+        if (!r.ok) throw new Error(`Notify failed: HTTP ${r.status}`);
+      }
+      return { output: { sent: true, channel: config.channel, message }, paused: false };
+    }
+    case "conditional_branch": {
+      const config = step.config as { condition: string; true_label?: string; false_label?: string };
+      let result: boolean;
+      try { const fn = new Function("context", `with(context) { return Boolean(${config.condition}); }`); result = fn(context) as boolean; }
+      catch (e) { throw new Error(`Condition failed: ${e instanceof Error ? e.message : String(e)}`); }
+      return { output: { condition: config.condition, result, branch: result ? (config.true_label ?? "true") : (config.false_label ?? "false") }, paused: false };
+    }
+    case "approval_gate":
+      return { output: null, paused: true };
+    default:
+      throw new Error(`Unknown step type: ${(step as WorkflowStep).type}`);
+  }
 }
 
 // ── Main Handler ───────────────────────────────────────────────────────────
@@ -195,7 +310,7 @@ export async function POST(req: NextRequest) {
     });
 
     const allSteps = remainingData.workflows_by_pk?.workflow_steps ?? [];
-    const remainingSteps = allSteps.filter((s) => !completedOrders.has(s.step_order));
+    const remainingSteps = (allSteps as WorkflowStep[]).filter((s) => !completedOrders.has(s.step_order));
 
     // 7. Resume the workflow run
     await hasuraAdmin(
@@ -214,6 +329,10 @@ export async function POST(req: NextRequest) {
         }`,
         { id: runId }
       );
+      await hasuraAdmin(
+        `mutation IncrementUsage($orgId: uuid!) { update_organization(pk_columns: { id: $orgId }, _inc: { current_month_usage: 1 }) { current_month_usage } }`,
+        { orgId }
+      );
       return NextResponse.json({
         step_run_id: stepRunId,
         workflow_run_id: runId,
@@ -222,39 +341,67 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 8. Execute remaining steps sequentially (inline - no Nhost function needed)
-    const VERCEL_URL = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
+    // 8. Execute remaining steps sequentially INLINE (no external fetch)
+    for (const step of remainingSteps) {
+      const stepRunData = await hasuraAdmin<{ insert_step_runs_one: { id: string } }>(
+        `mutation CreateStepRun($runId: uuid!, $stepId: uuid!) {
+          insert_step_runs_one(object: { workflow_run_id: $runId, step_id: $stepId, status: "running", attempt_count: 1 }) { id }
+        }`,
+        { runId, stepId: step.id }
+      );
+      const curStepRunId = stepRunData.insert_step_runs_one.id;
 
-    // Call our own trigger route with remaining steps context via internal API
-    const resumeRes = await fetch(
-      `${VERCEL_URL}/api/actions/resume-workflow-run`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          run_id: runId,
-          workflow_id: workflowId,
-          org_id: orgId,
-          approver_role: memberRole,
-          remaining_steps: remainingSteps,
-          step_outputs: stepOutputs,
-          secret: HASURA_ADMIN_SECRET,
-        }),
+      let stepOutput: Record<string, unknown> | null = null;
+      let stepError: string | null = null;
+      let stepStatus: "completed" | "failed" | "paused" = "completed";
+
+      try {
+        const result = await executeStep(step, stepOutputs, memberRole);
+        if (result.paused) {
+          await hasuraAdmin(`mutation PauseStep($id: uuid!) { update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: "paused", output_payload: {} }) { id } }`, { id: curStepRunId });
+          await hasuraAdmin(`mutation PauseRun($id: uuid!) { update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "paused" }) { id } }`, { id: runId });
+          return NextResponse.json({
+            step_run_id: stepRunId,
+            workflow_run_id: runId,
+            status: "paused",
+            message: `Approval accepted. Paused at next approval_gate step (step ${step.step_order}).`,
+          });
+        }
+        stepOutput = result.output;
+        stepOutputs[`step_${step.step_order}`] = { output: stepOutput ?? {} };
+        stepStatus = "completed";
+      } catch (err) {
+        stepError = err instanceof Error ? err.message : String(err);
+        stepStatus = "failed";
       }
-    );
 
-    if (!resumeRes.ok) {
-      const err = await resumeRes.text();
-      console.error("[approveStep] Resume failed:", err);
+      await hasuraAdmin(
+        `mutation UpdateStepRun($id: uuid!, $status: String!, $output: jsonb, $error: String) {
+          update_step_runs_by_pk(pk_columns: { id: $id }, _set: { status: $status, output_payload: $output, error_message: $error }) { id }
+        }`,
+        { id: curStepRunId, status: stepStatus, output: stepOutput, error: stepError }
+      );
+
+      if (stepStatus === "failed") {
+        await hasuraAdmin(`mutation FailRun($id: uuid!) { update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "failed", completed_at: "now()" }) { id } }`, { id: runId });
+        return NextResponse.json({
+          step_run_id: stepRunId,
+          workflow_run_id: runId,
+          status: "failed",
+          message: `Approval accepted, but workflow failed at step ${step.step_order}: ${stepError}`,
+        });
+      }
     }
+
+    // All steps completed
+    await hasuraAdmin(`mutation CompleteRun($id: uuid!) { update_workflow_runs_by_pk(pk_columns: { id: $id }, _set: { status: "completed", completed_at: "now()" }) { id } }`, { id: runId });
+    await hasuraAdmin(`mutation IncrementUsage($orgId: uuid!) { update_organization(pk_columns: { id: $orgId }, _inc: { current_month_usage: 1 }) { current_month_usage } }`, { orgId });
 
     return NextResponse.json({
       step_run_id: stepRunId,
       workflow_run_id: runId,
-      status: "resuming",
-      message: `Approval accepted by ${memberRole}. Workflow resuming from next step.`,
+      status: "completed",
+      message: "Approval accepted. All remaining steps completed successfully.",
     });
   } catch (err) {
     console.error("[approveStep] Error:", err);
