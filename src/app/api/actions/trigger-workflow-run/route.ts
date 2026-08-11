@@ -46,17 +46,45 @@ async function hasuraAdmin<T = unknown>(
   query: string,
   variables: Record<string, unknown> = {}
 ): Promise<T> {
-  const res = await fetch(HASURA_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-hasura-admin-secret": HASURA_ADMIN_SECRET,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-  if (json.errors?.length) throw new Error(json.errors[0].message);
-  return json.data as T;
+  const secretLength = HASURA_ADMIN_SECRET ? HASURA_ADMIN_SECRET.length : 0;
+  const secretStart = HASURA_ADMIN_SECRET ? HASURA_ADMIN_SECRET.slice(0, 3) : "none";
+  console.log(`[hasuraAdmin] Connecting to endpoint: ${HASURA_ENDPOINT}`);
+  console.log(`[hasuraAdmin] Secret length: ${secretLength}, starts with: ${secretStart}`);
+
+  try {
+    const res = await fetch(HASURA_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-hasura-admin-secret": HASURA_ADMIN_SECRET,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    
+    const responseBody = await res.text();
+    let json: any;
+    try {
+      json = JSON.parse(responseBody);
+    } catch (e) {
+      console.error("[hasuraAdmin] Failed to parse JSON response:", responseBody);
+      throw new Error(`Invalid JSON response from Hasura: ${responseBody.slice(0, 200)}`);
+    }
+
+    if (json.errors?.length) {
+      console.error("[hasuraAdmin] Hasura returned GraphQL errors:", json.errors);
+      throw new Error(json.errors[0].message);
+    }
+
+    if (!res.ok) {
+      console.error("[hasuraAdmin] HTTP error:", res.status, responseBody);
+      throw new Error(`HTTP ${res.status}: ${responseBody.slice(0, 200)}`);
+    }
+
+    return json.data as T;
+  } catch (err) {
+    console.error("[hasuraAdmin] Fetch exception:", err);
+    throw err;
+  }
 }
 
 function getGroqClient() {
