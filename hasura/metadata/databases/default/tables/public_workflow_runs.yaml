@@ -1,0 +1,118 @@
+table:
+  name: workflow_runs
+  schema: public
+object_relationships:
+  - name: workflow
+    using:
+      foreign_key_constraint_on: workflow_id
+array_relationships:
+  - name: step_runs
+    using:
+      foreign_key_constraint_on:
+        column: workflow_run_id
+        table:
+          name: step_runs
+          schema: public
+insert_permissions:
+  - role: owner
+    permission:
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      columns:
+        - workflow_id
+        - status
+        - triggered_by
+  - role: user
+    permission:
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      columns:
+        - workflow_id
+        - status
+        - triggered_by
+select_permissions:
+  - role: editor
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: owner
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: viewer
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+update_permissions:
+  - role: editor
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+  - role: owner
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+  - role: user
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}

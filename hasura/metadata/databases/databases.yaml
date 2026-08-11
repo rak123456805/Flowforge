@@ -3,7 +3,8 @@
   configuration:
     connection_info:
       database_url:
-        from_env: NHOST_DATABASE_URL
+        from_env: HASURA_GRAPHQL_DATABASE_URL
+      isolation_level: read-committed
       pool_settings:
         connection_lifetime: 600
         idle_timeout: 180

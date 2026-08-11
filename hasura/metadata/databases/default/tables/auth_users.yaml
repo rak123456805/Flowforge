@@ -1,0 +1,144 @@
+table:
+  name: users
+  schema: auth
+configuration:
+  column_config:
+    active_mfa_type:
+      custom_name: activeMfaType
+    avatar_url:
+      custom_name: avatarUrl
+    created_at:
+      custom_name: createdAt
+    default_role:
+      custom_name: defaultRole
+    disabled:
+      custom_name: disabled
+    display_name:
+      custom_name: displayName
+    email_verified:
+      custom_name: emailVerified
+    is_anonymous:
+      custom_name: isAnonymous
+    last_seen:
+      custom_name: lastSeen
+    locale:
+      custom_name: locale
+    metadata:
+      custom_name: metadata
+    new_email:
+      custom_name: newEmail
+    otp_hash:
+      custom_name: otpHash
+    otp_hash_expires_at:
+      custom_name: otpHashExpiresAt
+    otp_method_last_used:
+      custom_name: otpMethodLastUsed
+    phone_number:
+      custom_name: phoneNumber
+    phone_number_verified:
+      custom_name: phoneNumberVerified
+    ticket:
+      custom_name: ticket
+    ticket_expires_at:
+      custom_name: ticketExpiresAt
+    totp_secret:
+      custom_name: totpSecret
+    updated_at:
+      custom_name: updatedAt
+    webauthn_current_challenge:
+      custom_name: webauthnCurrentChallenge
+  custom_column_names:
+    active_mfa_type: activeMfaType
+    avatar_url: avatarUrl
+    created_at: createdAt
+    default_role: defaultRole
+    disabled: disabled
+    display_name: displayName
+    email_verified: emailVerified
+    is_anonymous: isAnonymous
+    last_seen: lastSeen
+    locale: locale
+    metadata: metadata
+    new_email: newEmail
+    otp_hash: otpHash
+    otp_hash_expires_at: otpHashExpiresAt
+    otp_method_last_used: otpMethodLastUsed
+    phone_number: phoneNumber
+    phone_number_verified: phoneNumberVerified
+    ticket: ticket
+    ticket_expires_at: ticketExpiresAt
+    totp_secret: totpSecret
+    updated_at: updatedAt
+    webauthn_current_challenge: webauthnCurrentChallenge
+  custom_name: users
+  custom_root_fields:
+    delete: deleteAuthUsers
+    delete_by_pk: deleteAuthUser
+    insert: insertAuthUsers
+    insert_one: insertAuthUser
+    select: authUsers
+    select_aggregate: authUsersAggregate
+    select_by_pk: authUser
+    update: updateAuthUsers
+    update_by_pk: updateAuthUser
+object_relationships:
+  - name: role
+    using:
+      foreign_key_constraint_on: default_role
+array_relationships:
+  - name: oauth2_auth_requests
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: oauth2_auth_requests
+          schema: auth
+  - name: oauth2_clients
+    using:
+      foreign_key_constraint_on:
+        column: created_by
+        table:
+          name: oauth2_clients
+          schema: auth
+  - name: oauth2_refresh_tokens
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: oauth2_refresh_tokens
+          schema: auth
+  - name: pkce_authorization_codes
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: pkce_authorization_codes
+          schema: auth
+  - name: refresh_tokens
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: refresh_tokens
+          schema: auth
+  - name: user_providers
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: user_providers
+          schema: auth
+  - name: user_roles
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: user_roles
+          schema: auth
+  - name: user_security_keys
+    using:
+      foreign_key_constraint_on:
+        column: user_id
+        table:
+          name: user_security_keys
+          schema: auth

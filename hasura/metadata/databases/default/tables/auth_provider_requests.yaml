@@ -1,0 +1,3 @@
+table:
+  name: provider_requests
+  schema: auth

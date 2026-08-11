@@ -1,0 +1,13 @@
+table:
+  name: oauth2_refresh_tokens
+  schema: auth
+object_relationships:
+  - name: oauth2_auth_request
+    using:
+      foreign_key_constraint_on: auth_request_id
+  - name: oauth2_client
+    using:
+      foreign_key_constraint_on: client_id
+  - name: user
+    using:
+      foreign_key_constraint_on: user_id

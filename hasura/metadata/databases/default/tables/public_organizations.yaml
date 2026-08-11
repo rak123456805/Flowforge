@@ -1,0 +1,122 @@
+table:
+  name: organizations
+  schema: public
+configuration:
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields:
+    delete: delete_organizations
+    delete_by_pk: delete_organization
+    insert: insert_organizations
+    insert_one: insert_organization
+    select: organizations
+    select_aggregate: organizations_aggregate
+    select_by_pk: organization
+    update: update_organizations
+    update_by_pk: update_organization
+array_relationships:
+  - name: org_members
+    using:
+      foreign_key_constraint_on:
+        column: org_id
+        table:
+          name: org_members
+          schema: public
+  - name: workflows
+    using:
+      foreign_key_constraint_on:
+        column: org_id
+        table:
+          name: workflows
+          schema: public
+computed_fields:
+  - name: monthly_usage_percentage
+    definition:
+      function:
+        name: organizations_monthly_usage_percentage
+        schema: public
+    comment: Percentage of monthly quota consumed (0-100+)
+select_permissions:
+  - role: editor
+    permission:
+      columns:
+        - id
+        - name
+        - max_quota_per_month
+        - current_month_usage
+        - created_at
+      computed_fields:
+        - monthly_usage_percentage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: owner
+    permission:
+      columns:
+        - id
+        - name
+        - max_quota_per_month
+        - current_month_usage
+        - created_at
+      computed_fields:
+        - monthly_usage_percentage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns:
+        - id
+        - name
+        - max_quota_per_month
+        - current_month_usage
+        - created_at
+      computed_fields:
+        - monthly_usage_percentage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: viewer
+    permission:
+      columns:
+        - id
+        - name
+        - max_quota_per_month
+        - current_month_usage
+        - created_at
+      computed_fields:
+        - monthly_usage_percentage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      allow_aggregations: true
+update_permissions:
+  - role: owner
+    permission:
+      columns:
+        - name
+        - max_quota_per_month
+        - current_month_usage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      check: {}
+  - role: user
+    permission:
+      columns:
+        - name
+        - max_quota_per_month
+        - current_month_usage
+      filter:
+        org_members:
+          user_id:
+            _eq: X-Hasura-User-Id
+      check: {}

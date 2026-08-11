@@ -1,0 +1,7 @@
+table:
+  name: oauth2_authorization_codes
+  schema: auth
+object_relationships:
+  - name: oauth2_auth_request
+    using:
+      foreign_key_constraint_on: auth_request_id

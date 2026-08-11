@@ -1,0 +1,131 @@
+table:
+  name: workflow_triggers
+  schema: public
+object_relationships:
+  - name: workflow
+    using:
+      foreign_key_constraint_on: workflow_id
+insert_permissions:
+  - role: editor
+    permission:
+      check:
+        _and:
+          - workflow:
+              organization:
+                org_members:
+                  user_id:
+                    _eq: X-Hasura-User-Id
+          - trigger_type:
+              _nin:
+                - webhook
+      columns:
+        - workflow_id
+        - trigger_type
+        - config
+  - role: owner
+    permission:
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      columns:
+        - workflow_id
+        - trigger_type
+        - config
+  - role: user
+    permission:
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      columns:
+        - workflow_id
+        - trigger_type
+        - config
+select_permissions:
+  - role: editor
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: owner
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: viewer
+    permission:
+      columns: '*'
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
+update_permissions:
+  - role: owner
+    permission:
+      columns:
+        - trigger_type
+        - config
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+  - role: user
+    permission:
+      columns:
+        - trigger_type
+        - config
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+delete_permissions:
+  - role: owner
+    permission:
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  - role: user
+    permission:
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id

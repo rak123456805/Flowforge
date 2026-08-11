@@ -1,0 +1,28 @@
+table:
+  name: roles
+  schema: auth
+configuration:
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields:
+    delete: deleteAuthRoles
+    delete_by_pk: deleteAuthRole
+    insert: insertAuthRoles
+    insert_one: insertAuthRole
+    select: authRoles
+    select_by_pk: authRole
+array_relationships:
+  - name: user_roles
+    using:
+      foreign_key_constraint_on:
+        column: role
+        table:
+          name: user_roles
+          schema: auth
+  - name: users
+    using:
+      foreign_key_constraint_on:
+        column: default_role
+        table:
+          name: users
+          schema: auth

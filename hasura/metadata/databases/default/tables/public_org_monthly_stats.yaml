@@ -1,0 +1,3 @@
+table:
+  name: org_monthly_stats
+  schema: public
