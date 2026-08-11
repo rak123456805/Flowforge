@@ -1,0 +1,27 @@
+table:
+  name: results
+  schema: public
+
+select_permissions:
+  - role: owner
+    permission:
+      columns: "*"
+      filter: {}
+  - role: editor
+    permission:
+      columns: "*"
+      filter: {}
+  - role: viewer
+    permission:
+      columns: "*"
+      filter: {}
+
+insert_permissions:
+  - role: owner
+    permission:
+      columns: "*"
+      check: {}
+  - role: editor
+    permission:
+      columns: "*"
+      check: {}

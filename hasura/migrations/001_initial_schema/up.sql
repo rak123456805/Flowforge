@@ -236,3 +236,14 @@ LEFT JOIN public.workflow_runs wr ON wr.workflow_id = w.id
 GROUP BY o.id, o.name, o.current_month_usage, o.max_quota_per_month;
 
 COMMENT ON VIEW public.org_monthly_stats IS 'Aggregated per-org stats for the current calendar month.';
+
+-- ============================================================
+-- TABLE: results (for db_write steps)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.results (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  data         JSONB       NOT NULL DEFAULT '{}',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.results IS 'Generic log/results table for db_write step outputs.';
