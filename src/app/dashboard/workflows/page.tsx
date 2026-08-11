@@ -43,6 +43,7 @@ export default function WorkflowsPage() {
   const { data, loading, refetch } = useQuery(GET_ORG_WORKFLOWS, {
     variables: { orgId: activeOrg?.id },
     skip: !activeOrg,
+    pollInterval: 5000,
   });
 
   const [createWorkflow, { loading: createLoading }] = useMutation(CREATE_WORKFLOW, {

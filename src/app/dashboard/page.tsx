@@ -61,11 +61,13 @@ export default function DashboardPage() {
   const { data: wfData, loading: wfLoading } = useQuery(GET_ORG_WORKFLOWS, {
     variables: { orgId: activeOrg?.id },
     skip: !activeOrg,
+    pollInterval: 5000,
   });
 
   const { data: runsData, loading: runsLoading } = useQuery(GET_ALL_RUNS, {
     variables: { orgId: activeOrg?.id },
     skip: !activeOrg,
+    pollInterval: 5000,
   });
 
   const workflows = wfData?.workflows ?? [];
