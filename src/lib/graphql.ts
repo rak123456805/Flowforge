@@ -6,7 +6,7 @@ import { gql } from "@apollo/client";
 
 export const GET_MY_ORGS = gql`
   query GetMyOrgs {
-    organizations {
+    organizations(order_by: { created_at: asc }) {
       id
       name
       max_quota_per_month
