@@ -4,7 +4,7 @@ const HASURA_ENDPOINT = process.env.NHOST_GRAPHQL_URL!;
 const HASURA_ADMIN_SECRET = process.env.NHOST_ADMIN_SECRET!;
 const NHOST_SUBDOMAIN = process.env.NEXT_PUBLIC_NHOST_SUBDOMAIN!;
 const NHOST_REGION = process.env.NEXT_PUBLIC_NHOST_REGION || "ap-south-1";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://flowforge-rose.vercel.app";
 
 async function hasuraAdmin<T = unknown>(
   query: string,

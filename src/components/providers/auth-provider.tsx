@@ -70,8 +70,14 @@ function AuthContextProvider({ children }: { children: React.ReactNode }) {
     password: string,
     displayNameArg?: string
   ): Promise<{ error: string | null }> => {
+    const redirectTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/dashboard`
+        : process.env.NEXT_PUBLIC_APP_URL || "https://flowforge-rose.vercel.app/dashboard";
+
     const result = await signUpEmailPassword(emailArg, password, {
       displayName: displayNameArg,
+      redirectTo,
     });
     if (result.isError) {
       return { error: result.error?.message ?? "Sign up failed" };
