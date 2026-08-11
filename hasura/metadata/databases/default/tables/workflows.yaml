@@ -39,6 +39,7 @@ select_permissions:
           org_members:
             user_id:
               _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: editor
     permission:
       columns: "*"
@@ -47,6 +48,7 @@ select_permissions:
           org_members:
             user_id:
               _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: viewer
     permission:
       columns: "*"
@@ -55,6 +57,16 @@ select_permissions:
           org_members:
             user_id:
               _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        organization:
+          org_members:
+            user_id:
+              _eq: X-Hasura-User-Id
+      allow_aggregations: true
 
 insert_permissions:
   - role: owner
@@ -70,6 +82,18 @@ insert_permissions:
             user_id:
               _eq: X-Hasura-User-Id
   - role: editor
+    permission:
+      columns:
+        - org_id
+        - name
+        - description
+        - is_active
+      check:
+        organization:
+          org_members:
+            user_id:
+              _eq: X-Hasura-User-Id
+  - role: user
     permission:
       columns:
         - org_id
@@ -109,9 +133,29 @@ update_permissions:
             user_id:
               _eq: X-Hasura-User-Id
       check: {}
+  - role: user
+    permission:
+      columns:
+        - name
+        - description
+        - is_active
+        - updated_at
+      filter:
+        organization:
+          org_members:
+            user_id:
+              _eq: X-Hasura-User-Id
+      check: {}
 
 delete_permissions:
   - role: owner
+    permission:
+      filter:
+        organization:
+          org_members:
+            user_id:
+              _eq: X-Hasura-User-Id
+  - role: user
     permission:
       filter:
         organization:

@@ -15,6 +15,10 @@ select_permissions:
     permission:
       columns: "*"
       filter: {}
+  - role: user
+    permission:
+      columns: "*"
+      filter: {}
 
 insert_permissions:
   - role: owner
@@ -22,6 +26,10 @@ insert_permissions:
       columns: "*"
       check: {}
   - role: editor
+    permission:
+      columns: "*"
+      check: {}
+  - role: user
     permission:
       columns: "*"
       check: {}

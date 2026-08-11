@@ -26,6 +26,7 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: editor
     permission:
       columns: "*"
@@ -35,6 +36,7 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: viewer
     permission:
       columns: "*"
@@ -44,11 +46,34 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
 
 # Only the Action handler (admin role) can insert/update workflow_runs.
 # Regular roles cannot directly create or modify run state.
 insert_permissions:
   - role: owner
+    permission:
+      columns:
+        - workflow_id
+        - status
+        - triggered_by
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  - role: user
     permission:
       columns:
         - workflow_id

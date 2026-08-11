@@ -17,6 +17,7 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: editor
     permission:
       columns: "*"
@@ -26,6 +27,7 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: viewer
     permission:
       columns: "*"
@@ -35,6 +37,17 @@ select_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      allow_aggregations: true
 
 insert_permissions:
   - role: owner
@@ -66,6 +79,18 @@ insert_permissions:
           - trigger_type:
               _nin:
                 - webhook
+  - role: user
+    permission:
+      columns:
+        - workflow_id
+        - trigger_type
+        - config
+      check:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
 
 update_permissions:
   - role: owner
@@ -80,9 +105,29 @@ update_permissions:
               user_id:
                 _eq: X-Hasura-User-Id
       check: {}
+  - role: user
+    permission:
+      columns:
+        - trigger_type
+        - config
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
 
 delete_permissions:
   - role: owner
+    permission:
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+  - role: user
     permission:
       filter:
         workflow:

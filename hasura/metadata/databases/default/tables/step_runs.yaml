@@ -23,6 +23,7 @@ select_permissions:
               org_members:
                 user_id:
                   _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: editor
     permission:
       columns: "*"
@@ -33,6 +34,7 @@ select_permissions:
               org_members:
                 user_id:
                   _eq: X-Hasura-User-Id
+      allow_aggregations: true
   - role: viewer
     permission:
       columns: "*"
@@ -43,6 +45,18 @@ select_permissions:
               org_members:
                 user_id:
                   _eq: X-Hasura-User-Id
+      allow_aggregations: true
+  - role: user
+    permission:
+      columns: "*"
+      filter:
+        workflow_run:
+          workflow:
+            organization:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
+      allow_aggregations: true
 
 # update_permissions: only used by approveStep action (via admin role).
 # But allow owners to update approved_by/approved_at for the approval gate.
@@ -77,4 +91,18 @@ update_permissions:
                       _eq: X-Hasura-User-Id
           - status:
               _eq: paused
+      check: {}
+  - role: user
+    permission:
+      columns:
+        - approved_by
+        - approved_at
+        - status
+      filter:
+        workflow_run:
+          workflow:
+            organization:
+              org_members:
+                user_id:
+                  _eq: X-Hasura-User-Id
       check: {}
