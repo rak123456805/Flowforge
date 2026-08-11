@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { nhost } from "@/lib/nhost";
@@ -13,7 +13,7 @@ type State =
   | { phase: "success"; orgName: string; role: string; orgId: string }
   | { phase: "error"; message: string };
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
@@ -71,7 +71,7 @@ export default function AcceptInvitePage() {
   }
 
   function handleLogin() {
-    router.push(`/auth?returnTo=/invite/accept?token=${token}`);
+    router.push(`/login?returnTo=/invite/accept?token=${token}`);
   }
 
   return (
@@ -180,5 +180,22 @@ export default function AcceptInvitePage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+          <div className="glass rounded-2xl p-10 max-w-sm w-full text-center space-y-4">
+            <Loader2 className="w-10 h-10 text-violet-400 animate-spin mx-auto" />
+            <h1 className="text-lg font-semibold text-zinc-200">Loading invitation…</h1>
+          </div>
+        </div>
+      }
+    >
+      <AcceptInviteContent />
+    </Suspense>
   );
 }
