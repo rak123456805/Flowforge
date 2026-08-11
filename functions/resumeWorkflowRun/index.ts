@@ -32,16 +32,17 @@ export default async function handler(req: Request, res: Response): Promise<unkn
     return errorResponse(res, "Unauthorized", 401);
   }
 
-  const { run_id, workflow_id, org_id, approved_by, approver_role, remaining_steps } = req.body as {
+  const { run_id, workflow_id, org_id, approved_by, approver_role, remaining_steps, initial_payload } = req.body as {
     run_id: string;
     workflow_id: string;
     org_id: string;
-    approved_by: string;
+    approved_by: string | null;
     approver_role: "owner" | "editor";
     remaining_steps: WorkflowStep[];
+    initial_payload?: Record<string, unknown>;
   };
 
-  if (!run_id || !workflow_id || !org_id || !approved_by || !approver_role || !remaining_steps) {
+  if (!run_id || !workflow_id || !org_id || !approver_role || !remaining_steps) {
     return errorResponse(res, "Missing required fields", 400);
   }
 
@@ -63,6 +64,10 @@ export default async function handler(req: Request, res: Response): Promise<unkn
     );
 
     const stepOutputs: Record<string, Record<string, unknown>> = {};
+    if (initial_payload) {
+      stepOutputs["trigger"] = { payload: initial_payload };
+    }
+
     for (const sr of completedRuns.step_runs ?? []) {
       stepOutputs[`step_${sr.step.step_order}`] = sr.output_payload ?? {};
     }
