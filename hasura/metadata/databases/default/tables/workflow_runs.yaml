@@ -85,3 +85,41 @@ insert_permissions:
             org_members:
               user_id:
                 _eq: X-Hasura-User-Id
+
+update_permissions:
+  - role: owner
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+  - role: editor
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
+  - role: user
+    permission:
+      columns:
+        - status
+        - completed_at
+      filter:
+        workflow:
+          organization:
+            org_members:
+              user_id:
+                _eq: X-Hasura-User-Id
+      check: {}
