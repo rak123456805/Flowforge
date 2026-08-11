@@ -502,7 +502,12 @@ async function executeNotify(
   if (config.channel === "slack" || config.channel === "webhook") {
     if (!config.url) throw new Error("notify step requires a url for slack/webhook channel");
 
-    const res = await fetch(config.url, {
+    const urlTrimmed = config.url.trim();
+    if (!urlTrimmed.startsWith("http://") && !urlTrimmed.startsWith("https://")) {
+      throw new Error(`Invalid URL: "${config.url}". Notify URL must start with http:// or https://. If this is an email address, please make sure you change the Channel dropdown to Email.`);
+    }
+
+    const res = await fetch(urlTrimmed, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: message }),
@@ -515,8 +520,9 @@ async function executeNotify(
   }
 
   // email — stub (integrate SendGrid/Resend in production)
-  console.log(`[notify] Email to ${config.recipient}: ${message}`);
-  return { output: { sent: true, channel: "email", recipient: config.recipient, message }, paused: false };
+  const recipient = config.recipient || config.url || "unknown@example.com";
+  console.log(`[notify] Email to ${recipient}: ${message}`);
+  return { output: { sent: true, channel: "email", recipient, message }, paused: false };
 }
 
 // ── Conditional Branch ───────────────────────────────────────────────────
