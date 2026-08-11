@@ -134,11 +134,21 @@ export function OrgProvider({
 
   const orgs: Organization[] = data?.organizations ?? [];
 
+  // Restore from localStorage or default to first org
   useEffect(() => {
     if (orgs.length > 0 && !activeOrg) {
-      setActiveOrgState(orgs[0]);
+      const saved = typeof window !== "undefined" ? localStorage.getItem("activeOrgId") : null;
+      const found = saved ? orgs.find((o: Organization) => o.id === saved) : null;
+      setActiveOrgState(found ?? orgs[0]);
     }
   }, [orgs, activeOrg]);
+
+  const setActiveOrg = (org: Organization) => {
+    setActiveOrgState(org);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("activeOrgId", org.id);
+    }
+  };
 
   // Sync activeOrg if org list updates
   useEffect(() => {
@@ -162,7 +172,7 @@ export function OrgProvider({
         orgs,
         activeOrg,
         activeRole,
-        setActiveOrg: setActiveOrgState,
+        setActiveOrg,
         loading,
         refetch,
       }}
