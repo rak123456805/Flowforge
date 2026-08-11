@@ -18,7 +18,7 @@ import {
   getWorkflowOrgId,
   withRetry,
   interpolateTemplate,
-  groqClient,
+  getGroqClient,
   GROQ_MODEL,
   errorResponse,
   successResponse,
@@ -367,7 +367,7 @@ async function executeLlmCall(
 
   const response = await withRetry(
     async () => {
-      const completion = await groqClient.chat.completions.create({
+      const completion = await getGroqClient().chat.completions.create({
         model: config.model ?? GROQ_MODEL,
         messages: [
           { role: "system", content: systemPrompt },

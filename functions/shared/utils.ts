@@ -101,9 +101,17 @@ export async function hasuraAdmin<T = unknown>(
 // Groq Client
 // ============================================================
 
-export const groqClient = new Groq({
-  apiKey: process.env.GROQ_API_KEY!,
-});
+let _groqClient: Groq | null = null;
+export function getGroqClient() {
+  if (!_groqClient) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("GROQ_API_KEY environment variable is missing");
+    }
+    _groqClient = new Groq({ apiKey });
+  }
+  return _groqClient;
+}
 
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
 
