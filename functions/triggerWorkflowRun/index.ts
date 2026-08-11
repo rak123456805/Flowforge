@@ -71,13 +71,13 @@ export default async function handler(req: Request, res: Response): Promise<unkn
 
     // ── 2. Quota check ────────────────────────────────────────────────────
     const orgData = await hasuraAdmin<{
-      organizations_by_pk: {
+      organization: {
         max_quota_per_month: number;
         current_month_usage: number;
       } | null;
     }>(
       `query QuotaCheck($orgId: uuid!) {
-        organizations_by_pk(id: $orgId) {
+        organization(id: $orgId) {
           max_quota_per_month
           current_month_usage
         }
@@ -85,7 +85,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
       { orgId }
     );
 
-    const org = orgData.organizations_by_pk;
+    const org = orgData.organization;
     if (!org) return errorResponse(res, "Organization not found", 404);
 
     if (org.current_month_usage >= org.max_quota_per_month) {
@@ -272,7 +272,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
 
     await hasuraAdmin(
       `mutation IncrementUsage($orgId: uuid!) {
-        update_organizations_by_pk(pk_columns: { id: $orgId }, _inc: {
+        update_organization(pk_columns: { id: $orgId }, _inc: {
           current_month_usage: 1
         }) { current_month_usage }
       }`,

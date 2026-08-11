@@ -78,13 +78,13 @@ export default async function handler(req: Request, res: Response): Promise<unkn
 
     // ── 4. Check quota ────────────────────────────────────────────────────
     const orgData = await hasuraAdmin<{
-      organizations_by_pk: {
+      organization: {
         max_quota_per_month: number;
         current_month_usage: number;
       } | null;
     }>(
       `query QuotaCheck($orgId: uuid!) {
-        organizations_by_pk(id: $orgId) {
+        organization(id: $orgId) {
           max_quota_per_month
           current_month_usage
         }
@@ -92,7 +92,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
       { orgId: workflow.org_id }
     );
 
-    const org = orgData.organizations_by_pk;
+    const org = orgData.organization;
     if (!org) return errorResponse(res, "Organization not found", 404);
     if (org.current_month_usage >= org.max_quota_per_month) {
       return errorResponse(

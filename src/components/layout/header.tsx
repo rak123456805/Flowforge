@@ -28,7 +28,7 @@ function QuotaBar({ orgId }: { orgId: string }) {
     skip: !orgId,
   });
 
-  const org = data?.organizations_by_pk;
+  const org = data?.organization;
   const pct = org?.monthly_usage_percentage ?? 0;
   const used = org?.current_month_usage ?? 0;
   const max = org?.max_quota_per_month ?? 100;

@@ -402,7 +402,7 @@ export const SUBSCRIBE_WORKFLOW_RUN_STATUS = gql`
 
 export const SUBSCRIBE_ORG_QUOTA = gql`
   subscription OrgQuotaLive($orgId: uuid!) {
-    organizations_by_pk(id: $orgId) {
+    organization(id: $orgId) {
       id
       current_month_usage
       max_quota_per_month

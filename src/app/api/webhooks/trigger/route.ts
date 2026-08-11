@@ -65,15 +65,15 @@ export async function POST(req: NextRequest) {
     if (!wf.is_active) return NextResponse.json({ error: "Workflow inactive" }, { status: 400 });
 
     const orgData = await hasuraAdmin<{
-      organizations_by_pk: { current_month_usage: number; max_quota_per_month: number } | null;
+      organization: { current_month_usage: number; max_quota_per_month: number } | null;
     }>(
       `query QuotaCheck($orgId: uuid!) {
-        organizations_by_pk(id: $orgId) { current_month_usage max_quota_per_month }
+        organization(id: $orgId) { current_month_usage max_quota_per_month }
       }`,
       { orgId: wf.org_id }
     );
 
-    const org = orgData.organizations_by_pk;
+    const org = orgData.organization;
     if (!org) return NextResponse.json({ error: "Org not found" }, { status: 404 });
     if (org.current_month_usage >= org.max_quota_per_month) {
       return NextResponse.json({ error: "Monthly quota exhausted" }, { status: 429 });
