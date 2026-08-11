@@ -225,6 +225,34 @@ export function interpolateTemplate(
   });
 }
 
+export function interpolateJsonTemplate(
+  template: string,
+  context: Record<string, unknown>
+): string {
+  return template.replace(/(")?\{\{([^}]+)\}\}(")?/g, (match, leadingQuote, path, trailingQuote) => {
+    const parts = path.trim().split(".");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let val: any = context;
+    for (const part of parts) {
+      if (val == null) return "";
+      val = val[part];
+    }
+
+    if (val == null) {
+      return leadingQuote ? '""' : "null";
+    }
+
+    const stringified = JSON.stringify(val);
+
+    if (leadingQuote && trailingQuote) {
+      return stringified;
+    }
+
+    return stringified;
+  });
+}
+
+
 import type { Response } from "express";
 
 // ============================================================

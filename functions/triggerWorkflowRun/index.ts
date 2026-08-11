@@ -18,6 +18,7 @@ import {
   getWorkflowOrgId,
   withRetry,
   interpolateTemplate,
+  interpolateJsonTemplate,
   getGroqClient,
   GROQ_MODEL,
   errorResponse,
@@ -419,7 +420,7 @@ async function executeHttpRequest(
 
   const body =
     config.body_template
-      ? interpolateTemplate(config.body_template, context as Record<string, unknown>)
+      ? interpolateJsonTemplate(config.body_template, context as Record<string, unknown>)
       : undefined;
 
   const response = await withRetry(async () => {
@@ -467,7 +468,7 @@ async function executeDbWrite(
   };
 
   const variablesStr = config.variables_template
-    ? interpolateTemplate(config.variables_template, context as Record<string, unknown>)
+    ? interpolateJsonTemplate(config.variables_template, context as Record<string, unknown>)
     : "{}";
 
   let variables: Record<string, unknown>;
