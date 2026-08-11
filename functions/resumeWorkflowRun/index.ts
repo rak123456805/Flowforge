@@ -69,7 +69,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
     }
 
     for (const sr of completedRuns.step_runs ?? []) {
-      stepOutputs[`step_${sr.step.step_order}`] = sr.output_payload ?? {};
+      stepOutputs[`step_${sr.step.step_order}`] = { output: sr.output_payload ?? {} };
     }
 
     // ── 2. Execute remaining steps sequentially ─────────────────────────────
@@ -128,7 +128,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
         }
 
         stepOutput = result.output;
-        stepOutputs[`step_${step.step_order}`] = stepOutput ?? {};
+        stepOutputs[`step_${step.step_order}`] = { output: stepOutput ?? {} };
         stepStatus = "completed";
       } catch (err) {
         stepError = err instanceof Error ? err.message : String(err);

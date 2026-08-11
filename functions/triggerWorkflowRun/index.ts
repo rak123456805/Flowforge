@@ -215,7 +215,7 @@ export default async function handler(req: Request, res: Response): Promise<unkn
         }
 
         stepOutput = result.output;
-        stepOutputs[`step_${step.step_order}`] = stepOutput ?? {};
+        stepOutputs[`step_${step.step_order}`] = { output: stepOutput ?? {} };
         stepStatus = "completed";
       } catch (err) {
         stepError = err instanceof Error ? err.message : String(err);
