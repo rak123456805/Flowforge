@@ -1,0 +1,27 @@
+[global]
+[[global.environment]]
+
+[hasura]
+version = "v2.44.0-ce"
+adminSecret = "{{ secrets.NHOST_ADMIN_SECRET }}"
+webhookSecret = "{{ secrets.NHOST_WEBHOOK_SECRET }}"
+
+[[hasura.jwtSecrets]]
+type = "HS256"
+key = "{{ secrets.NHOST_JWT_SECRET }}"
+
+[functions]
+[functions.node]
+version = 20
+
+[auth]
+version = "0.37.2"
+
+[auth.redirections]
+clientUrl = "https://flowforge-rose.vercel.app"
+
+[storage]
+version = "0.6.2"
+
+[postgres]
+version = "14.13.0"
