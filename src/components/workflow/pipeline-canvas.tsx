@@ -66,7 +66,7 @@ function defaultConfig(type: StepType): Record<string, unknown> {
       };
     case "http_request":
       return {
-        url: "https://httpbin.org/post",
+        url: "https://postman-echo.com/post",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body_template: '{"data": "{{step_1.output.content}}"}',
@@ -79,13 +79,13 @@ function defaultConfig(type: StepType): Record<string, unknown> {
       };
     case "notify":
       return {
-        channel: "slack",
-        url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
-        message_template: "Workflow completed: {{step_1.output.content}}",
+        channel: "email",
+        recipient: "user@example.com",
+        message_template: "Workflow completed:\n\n{{step_1.output.content}}",
       };
     case "conditional_branch":
       return {
-        condition: "context.step_1.output.content.includes('success')",
+        condition: "step_1.output.content.includes('success')",
         true_label: "Success path",
         false_label: "Fallback path",
       };
@@ -362,26 +362,35 @@ function StepConfigEditor({
             <label className="block text-xs font-medium text-zinc-400 mb-1">Channel</label>
             <select
               disabled={disabled}
-              value={String(config.channel ?? "slack")}
+              value={String(config.channel ?? "email")}
               onChange={(e) => onChange?.({ ...config, channel: e.target.value })}
               className="input-base"
             >
-              <option value="slack">Slack</option>
-              <option value="email">Email</option>
+              <option value="email">Email (log only)</option>
+              <option value="slack">Slack Webhook</option>
               <option value="webhook">Generic Webhook</option>
             </select>
           </div>
-          {field("url", "Webhook URL / Email", { placeholder: "https://hooks.slack.com/..." })}
+          {(config.channel === "slack" || config.channel === "webhook") ? (
+            field("url", "Webhook URL", { placeholder: "https://hooks.slack.com/services/T.../B.../..." })
+          ) : (
+            field("recipient", "Recipient Email", { placeholder: "user@example.com" })
+          )}
           {field("message_template", "Message Template", { rows: 2, placeholder: "Workflow finished: {{step_1.output.content}}" })}
+          {(config.channel === "email") && (
+            <p className="text-[10px] text-zinc-500 bg-zinc-800/50 rounded px-2 py-1">
+              📧 Email channel logs the message to Nhost function logs. To send real emails, integrate SendGrid or Resend in the notify step handler.
+            </p>
+          )}
         </>
       )}
       {type === "conditional_branch" && (
         <>
-          {field("condition", "JavaScript Condition", { rows: 2, placeholder: "context.step_1.output.result.includes('yes')" })}
+          {field("condition", "JavaScript Condition", { rows: 2, placeholder: "step_1.output.content.includes('success')" })}
           {field("true_label", "True Branch Label", { placeholder: "success" })}
           {field("false_label", "False Branch Label", { placeholder: "fallback" })}
           <p className="text-[10px] text-zinc-600">
-            Use <code className="text-zinc-500">context.step_N.output.field</code> to reference prior step outputs.
+            Use <code className="text-zinc-500">step_N.output.field</code> to reference prior step outputs (e.g. <code className="text-zinc-500">step_1.output.content</code>).
           </p>
         </>
       )}
