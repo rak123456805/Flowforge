@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot,
@@ -9,35 +15,39 @@ import {
   Bell,
   GitFork,
   ShieldAlert,
-  GripVertical,
   Plus,
   Trash2,
   Lock,
-  Play,
   ChevronDown,
-  ChevronUp,
-  Save,
-  Loader2,
   X,
   Zap,
   Clock,
-  AlertTriangle,
   Search,
-  Maximize2,
   Workflow,
-  PlusCircle,
-  GitCommit,
-  Maximize,
-  Minimize,
-  Eye,
   Sliders,
+  Sparkles,
+  Undo2,
+  Redo2,
+  Info,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  ArrowRight,
 } from "lucide-react";
-import type { StepType, TriggerType, WorkflowStep, WorkflowTrigger } from "@/lib/types";
+import type {
+  StepType,
+  TriggerType,
+  WorkflowStep,
+  WorkflowTrigger,
+} from "@/lib/types";
 import { cn, getStepTypeColor, isOwnerOnlyStep } from "@/lib/utils";
 
-// ── Step metadata ──────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────
+const NODE_W = 300; // px, canvas units
+const NODE_H = 88;
 
-const STEP_TYPES: Array<{
+// ── Step type metadata ─────────────────────────────────────────────────────
+const STEP_META: Array<{
   type: StepType;
   label: string;
   category: "agent" | "logic" | "action";
@@ -45,25 +55,84 @@ const STEP_TYPES: Array<{
   description: string;
   ownerOnly?: boolean;
 }> = [
-  { type: "llm_call", label: "LLM Call", category: "agent", icon: Bot, description: "Call Groq LLM API (llama-3.3-70b)" },
-  { type: "conditional_branch", label: "Conditional Branch", category: "logic", icon: GitFork, description: "Branch based on prior output" },
-  { type: "approval_gate", label: "Approval Gate", category: "logic", icon: ShieldAlert, description: "Pause and await human approval" },
-  { type: "http_request", label: "HTTP Request", category: "action", icon: Globe, description: "Make external HTTP calls" },
-  { type: "db_write", label: "DB Write", category: "action", icon: Database, description: "Write to database tables", ownerOnly: true },
-  { type: "notify", label: "Notify", category: "action", icon: Bell, description: "Send Slack/email notification", ownerOnly: true },
+  {
+    type: "llm_call",
+    label: "Llama 3 Agent",
+    category: "agent",
+    icon: Bot,
+    description: "Groq LLM API — llama-3.3-70b",
+  },
+  {
+    type: "conditional_branch",
+    label: "Conditional Branch",
+    category: "logic",
+    icon: GitFork,
+    description: "Route based on JS expression",
+  },
+  {
+    type: "approval_gate",
+    label: "Approval Gate",
+    category: "logic",
+    icon: ShieldAlert,
+    description: "Pause & await human approval",
+  },
+  {
+    type: "http_request",
+    label: "HTTP Request",
+    category: "action",
+    icon: Globe,
+    description: "Call any external HTTP endpoint",
+  },
+  {
+    type: "db_write",
+    label: "DB Write",
+    category: "action",
+    icon: Database,
+    description: "Write to Hasura DB",
+    ownerOnly: true,
+  },
+  {
+    type: "notify",
+    label: "Notify (Slack / Email)",
+    category: "action",
+    icon: Bell,
+    description: "Send notification alert",
+    ownerOnly: true,
+  },
 ];
 
-const TRIGGER_TYPES: Array<{
+const TRIGGER_META: Array<{
   type: TriggerType;
   label: string;
   icon: React.ElementType;
   description: string;
   ownerOnly?: boolean;
 }> = [
-  { type: "manual", label: "Manual Run", icon: Zap, description: "Run via dashboard button" },
-  { type: "webhook", label: "Webhook Trigger", icon: Globe, description: "Run via inbound HTTP POST", ownerOnly: true },
-  { type: "scheduled", label: "Scheduled Cron", icon: Clock, description: "Run at scheduled intervals" },
-  { type: "database_event", label: "DB Event", icon: Database, description: "Run on PostgreSQL changes" },
+  {
+    type: "webhook",
+    label: "Webhook Trigger",
+    icon: Globe,
+    description: "HTTP POST from external system",
+    ownerOnly: true,
+  },
+  {
+    type: "manual",
+    label: "Manual Run",
+    icon: Zap,
+    description: "Dashboard button click",
+  },
+  {
+    type: "scheduled",
+    label: "Scheduled Cron",
+    icon: Clock,
+    description: "Time-based schedule",
+  },
+  {
+    type: "database_event",
+    label: "DB Event",
+    icon: Database,
+    description: "PostgreSQL row change",
+  },
 ];
 
 const ICON_MAP: Record<StepType, React.ElementType> = {
@@ -75,13 +144,12 @@ const ICON_MAP: Record<StepType, React.ElementType> = {
   approval_gate: ShieldAlert,
 };
 
-// ── Default configs per step type ──────────────────────────────────────────
-
+// ── Default configs ────────────────────────────────────────────────────────
 function defaultConfig(type: StepType): Record<string, unknown> {
   switch (type) {
     case "llm_call":
       return {
-        prompt: "{{step_1.output.content}}\n\nAnalyze the above and provide a structured summary.",
+        prompt: "{{step_1.output.content}}\n\nAnalyze and summarize.",
         system_prompt: "You are a helpful AI assistant.",
         model: "llama-3.3-70b-versatile",
         temperature: 0.7,
@@ -91,30 +159,30 @@ function defaultConfig(type: StepType): Record<string, unknown> {
       return {
         url: "https://postman-echo.com/post",
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body_template: '{"data": "{{step_1.output.content}}"}',
+        body_template: '{"data":"{{step_1.output.content}}"}',
         timeout_ms: 30000,
       };
     case "db_write":
       return {
-        mutation: "mutation InsertResult($data: jsonb!) { insert_results_one(object: { data: $data }) { id } }",
-        variables_template: '{"data": "{{step_1.output.content}}"}',
+        mutation:
+          "mutation InsertResult($data: jsonb!) { insert_results_one(object:{data:$data}){id} }",
+        variables_template: '{"data":"{{step_1.output.content}}"}',
       };
     case "notify":
       return {
         channel: "email",
         recipient: "user@example.com",
-        message_template: "Workflow completed:\n\n{{step_1.output.content}}",
+        message_template: "Workflow update:\n\n{{step_1.output.content}}",
       };
     case "conditional_branch":
       return {
         condition: "step_1.output.content.includes('success')",
-        true_label: "Success path",
-        false_label: "Fallback path",
+        true_label: "True",
+        false_label: "False",
       };
     case "approval_gate":
       return {
-        message: "Please review the output from the previous steps and approve to continue.",
+        message: "Please review and approve to continue.",
         required_role: "editor",
       };
     default:
@@ -122,493 +190,24 @@ function defaultConfig(type: StepType): Record<string, unknown> {
   }
 }
 
-// ── Visual Connector Path ──────────────────────────────────────────────────
-
-function CanvasConnector() {
-  return (
-    <div className="flex justify-center h-10 w-full relative">
-      <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-        <line
-          x1="50%"
-          y1="0"
-          x2="50%"
-          y2="100%"
-          stroke="rgba(255, 255, 255, 0.05)"
-          strokeWidth="3"
-        />
-        <line
-          x1="50%"
-          y1="0"
-          x2="50%"
-          y2="100%"
-          stroke="#8B5CF6"
-          strokeWidth="1.5"
-          className="flow-connector"
-        />
-      </svg>
-    </div>
-  );
-}
-
-// ── Trigger Node (Renders as a first canvas node) ──────────────────────────
-
-function TriggerNode({
-  triggers,
-  userRole,
-  onSave,
-}: {
-  triggers: WorkflowTrigger[];
-  userRole: "owner" | "editor" | "viewer" | null;
-  onSave: (type: TriggerType, config: Record<string, unknown>) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const trigger = triggers[0];
-  const [type, setType] = useState<TriggerType>(trigger?.trigger_type ?? "manual");
-  const [config, setConfig] = useState<Record<string, unknown>>(
-    (trigger?.config as Record<string, unknown>) ?? {}
-  );
-  const canEdit = userRole === "owner" || userRole === "editor";
-  const activeTriggerInfo = TRIGGER_TYPES.find((t) => t.type === type);
-  const TriggerIcon = activeTriggerInfo?.icon ?? Zap;
-
-  const handleTriggerSave = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onSave(type, config);
+// ── Connection color per type ──────────────────────────────────────────────
+function connColor(type: string): string {
+  const map: Record<string, string> = {
+    webhook: "#10B981",
+    manual: "#10B981",
+    scheduled: "#10B981",
+    database_event: "#10B981",
+    llm_call: "#3B82F6",
+    conditional_branch: "#8B5CF6",
+    approval_gate: "#F59E0B",
+    http_request: "#EC4899",
+    db_write: "#EF4444",
+    notify: "#F59E0B",
   };
-
-  return (
-    <div className="w-[450px] glass rounded-xl border border-zinc-800/80 overflow-hidden shadow-lg transition-all duration-300 hover:border-zinc-700/80">
-      <div
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-900/30 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center">
-            <TriggerIcon className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-zinc-200">
-                {activeTriggerInfo?.label ?? "Trigger"}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-[8px] font-bold text-purple-400 uppercase">
-                Trigger Port
-              </span>
-            </div>
-            <p className="text-xs text-zinc-500">
-              {type === "manual" && "Runs manually on button click"}
-              {type === "webhook" && `Webhook URL listener`}
-              {type === "scheduled" && `Cron: ${config.cron_expression ?? "Not set"}`}
-              {type === "database_event" && `On DB ${config.operation ?? "INSERT"} on ${config.table ?? "table"}`}
-            </p>
-          </div>
-        </div>
-        <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform", expanded && "rotate-180")} />
-      </div>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-zinc-800/60 bg-zinc-950/20 p-4 space-y-4"
-          >
-            <div className="grid grid-cols-2 gap-2">
-              {TRIGGER_TYPES.map((t) => {
-                const blocked = t.ownerOnly && userRole !== "owner";
-                return (
-                  <button
-                    key={t.type}
-                    onClick={() => !blocked && canEdit && setType(t.type)}
-                    disabled={blocked || !canEdit}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all cursor-pointer",
-                      type === t.type
-                        ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
-                        : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200",
-                      (blocked || !canEdit) && "opacity-40 cursor-not-allowed"
-                    )}
-                  >
-                    <t.icon className="w-3.5 h-3.5" />
-                    {t.label}
-                    {t.ownerOnly && <Lock className="w-2.5 h-2.5 ml-auto text-rose-400" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {type === "webhook" && (
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-zinc-400">Secret Token</label>
-                <input
-                  disabled={!canEdit}
-                  value={String(config.secret_token ?? "")}
-                  onChange={(e) => setConfig({ ...config, secret_token: e.target.value })}
-                  className="input-base"
-                  placeholder="your-webhook-secret"
-                />
-                <p className="text-[10px] text-zinc-500">
-                  Header name: <code>x-workflow-webhook-secret</code>
-                </p>
-              </div>
-            )}
-
-            {type === "scheduled" && (
-              <div className="space-y-1">
-                <label className="block text-[11px] font-semibold text-zinc-400">Cron Expression</label>
-                <input
-                  disabled={!canEdit}
-                  value={String(config.cron_expression ?? "")}
-                  onChange={(e) => setConfig({ ...config, cron_expression: e.target.value })}
-                  className="input-base"
-                  placeholder="0 9 * * 1 (every Monday at 9am)"
-                />
-              </div>
-            )}
-
-            {type === "database_event" && (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-semibold text-zinc-400">Table Name</label>
-                  <input
-                    disabled={!canEdit}
-                    value={String(config.table ?? "")}
-                    onChange={(e) => setConfig({ ...config, table: e.target.value })}
-                    className="input-base"
-                    placeholder="public.my_table"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-semibold text-zinc-400">Operation</label>
-                  <select
-                    disabled={!canEdit}
-                    value={String(config.operation ?? "INSERT")}
-                    onChange={(e) => setConfig({ ...config, operation: e.target.value })}
-                    className="input-base"
-                  >
-                    {["INSERT", "UPDATE", "DELETE"].map((op) => (
-                      <option key={op} value={op}>{op}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {canEdit && (
-              <button
-                onClick={handleTriggerSave}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 text-xs font-semibold shadow-sm transition-all cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                Save Trigger
-              </button>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+  return map[type] ?? "#6366F1";
 }
 
-// ── Step Node Card ─────────────────────────────────────────────────────────
-
-function StepNode({
-  step,
-  index,
-  total,
-  userRole,
-  onMoveUp,
-  onMoveDown,
-  onDelete,
-  onConfigChange,
-}: {
-  step: WorkflowStep;
-  index: number;
-  total: number;
-  userRole: "owner" | "editor" | "viewer" | null;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onDelete: () => void;
-  onConfigChange: (config: Record<string, unknown>) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = ICON_MAP[step.type];
-  const colorClass = getStepTypeColor(step.type);
-  const ownerOnly = isOwnerOnlyStep(step.type);
-  const canEdit = userRole === "owner" || (userRole === "editor" && !ownerOnly);
-
-  const stepMeta = STEP_TYPES.find((s) => s.type === step.type);
-
-  // Border glows and shadows depending on type
-  const typeGlows = {
-    llm_call: "border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.02)]",
-    http_request: "border-pink-500/20 shadow-[0_0_15px_rgba(236,72,153,0.02)]",
-    db_write: "border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.02)]",
-    notify: "border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.02)]",
-    conditional_branch: "border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.02)]",
-    approval_gate: "border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.03)] animate-pulse",
-  };
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -12, scale: 0.98 }}
-      className="w-[450px]"
-    >
-      <div
-        className={cn(
-          "glass rounded-xl border overflow-hidden transition-all duration-300 hover:bg-zinc-950/40",
-          expanded ? "border-violet-500/40" : "border-zinc-800/80",
-          typeGlows[step.type as keyof typeof typeGlows]
-        )}
-      >
-        <div
-          className="flex items-center gap-3 p-4 cursor-pointer"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-            <GripVertical className="w-3.5 h-3.5 text-zinc-600" />
-            <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] font-mono text-zinc-400 font-bold">
-              {step.step_order}
-            </span>
-          </div>
-
-          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border", colorClass)}>
-            <Icon className="w-4 h-4" />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-zinc-200">
-                {stepMeta?.label ?? step.type}
-              </span>
-              {ownerOnly && (
-                <div className="flex items-center gap-1 text-[8px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5 rounded-full uppercase">
-                  <Lock className="w-2.5 h-2.5" />
-                  Owner only
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-zinc-500 truncate mt-0.5 font-medium">
-              {step.type === "llm_call" && (step.config as { prompt?: string }).prompt
-                ? `Prompt: "${String((step.config as { prompt?: string }).prompt).slice(0, 45)}…"`
-                : step.type === "http_request" && (step.config as { url?: string }).url
-                  ? `${(step.config as { method?: string }).method ?? "GET"} ${(step.config as { url: string }).url}`
-                  : step.type === "conditional_branch" && (step.config as { condition?: string }).condition
-                    ? `If: ${String((step.config as { condition?: string }).condition)}`
-                    : stepMeta?.description}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-            {canEdit && (
-              <>
-                <button
-                  onClick={onMoveUp}
-                  disabled={index === 0}
-                  className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 disabled:opacity-20 transition-all cursor-pointer"
-                  title="Move Up"
-                >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={onMoveDown}
-                  disabled={index === total - 1}
-                  className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 disabled:opacity-20 transition-all cursor-pointer"
-                  title="Move Down"
-                >
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={onDelete}
-                  className="p-1 rounded hover:bg-rose-500/10 text-zinc-500 hover:text-rose-400 transition-all cursor-pointer"
-                  title="Delete Step"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
-            <ChevronDown className={cn("w-4 h-4 text-zinc-500 transition-transform ml-1", expanded && "rotate-180")} />
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden border-t border-zinc-850 bg-zinc-950/20"
-            >
-              <div className="p-4">
-                {!canEdit && (
-                  <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3 font-medium">
-                    <Lock className="w-3.5 h-3.5" />
-                    {ownerOnly
-                      ? "Owner role required to configure this step type"
-                      : "You have read-only access to this step"}
-                  </div>
-                )}
-                <StepConfigEditor
-                  type={step.type}
-                  config={step.config as Record<string, unknown>}
-                  onChange={canEdit ? onConfigChange : undefined}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── Step Config Editor ─────────────────────────────────────────────────────
-
-function StepConfigEditor({
-  type,
-  config,
-  onChange,
-}: {
-  type: StepType;
-  config: Record<string, unknown>;
-  onChange?: (c: Record<string, unknown>) => void;
-}) {
-  const disabled = !onChange;
-
-  function field(key: string, label: string, opts?: { type?: string; rows?: number; placeholder?: string }) {
-    return (
-      <div key={key} className="space-y-1.5">
-        <label className="block text-[11px] font-semibold text-zinc-400">
-          {label}
-        </label>
-        {opts?.rows ? (
-          <textarea
-            disabled={disabled}
-            value={String(config[key] ?? "")}
-            onChange={(e) => onChange?.({ ...config, [key]: e.target.value })}
-            rows={opts.rows}
-            className="textarea-base"
-            placeholder={opts?.placeholder}
-          />
-        ) : (
-          <input
-            disabled={disabled}
-            type={opts?.type ?? "text"}
-            value={String(config[key] ?? "")}
-            onChange={(e) =>
-              onChange?.({
-                ...config,
-                [key]: opts?.type === "number" ? Number(e.target.value) : e.target.value,
-              })
-            }
-            className="input-base"
-            placeholder={opts?.placeholder}
-          />
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {type === "llm_call" && (
-        <>
-          {field("system_prompt", "System Prompt", { rows: 2, placeholder: "You are a helpful assistant." })}
-          {field("prompt", "User Prompt", { rows: 4, placeholder: "Use {{step_1.output.content}} to reference prior steps." })}
-          <div className="grid grid-cols-2 gap-3">
-            {field("model", "Model", { placeholder: "llama-3.3-70b-versatile" })}
-            {field("temperature", "Temperature", { type: "number", placeholder: "0.7" })}
-          </div>
-          {field("max_tokens", "Max Tokens", { type: "number", placeholder: "1024" })}
-        </>
-      )}
-      {type === "http_request" && (
-        <>
-          {field("url", "Endpoint URL", { placeholder: "https://api.example.com/endpoint" })}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-zinc-400 mb-1.5">Method</label>
-              <select
-                disabled={disabled}
-                value={String(config.method ?? "GET")}
-                onChange={(e) => onChange?.({ ...config, method: e.target.value })}
-                className="input-base"
-              >
-                {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            {field("timeout_ms", "Timeout (ms)", { type: "number", placeholder: "30000" })}
-          </div>
-          {field("body_template", "Body Template (JSON)", { rows: 3, placeholder: '{"key": "{{step_1.output.content}}"}' })}
-        </>
-      )}
-      {type === "db_write" && (
-        <>
-          {field("mutation", "GraphQL Mutation", { rows: 4, placeholder: "mutation { ... }" })}
-          {field("variables_template", "Variables Template (JSON)", { rows: 2, placeholder: '{"key": "{{step_1.output.content}}"}' })}
-        </>
-      )}
-      {type === "notify" && (
-        <>
-          <div>
-            <label className="block text-[11px] font-semibold text-zinc-400 mb-1.5">Channel</label>
-            <select
-              disabled={disabled}
-              value={String(config.channel ?? "email")}
-              onChange={(e) => onChange?.({ ...config, channel: e.target.value })}
-              className="input-base"
-            >
-              <option value="email">Email Logs (log only)</option>
-              <option value="slack">Slack Webhook</option>
-              <option value="webhook">Generic Webhook</option>
-            </select>
-          </div>
-          {(config.channel === "slack" || config.channel === "webhook") ? (
-            field("url", "Webhook URL", { placeholder: "https://hooks.slack.com/services/T.../B.../..." })
-          ) : (
-            field("recipient", "Recipient Email", { placeholder: "user@example.com" })
-          )}
-          {field("message_template", "Message Template", { rows: 2, placeholder: "Workflow finished: {{step_1.output.content}}" })}
-        </>
-      )}
-      {type === "conditional_branch" && (
-        <>
-          {field("condition", "JavaScript Logic Expression", { rows: 2, placeholder: "step_1.output.content.includes('success')" })}
-          <div className="grid grid-cols-2 gap-3">
-            {field("true_label", "True Branch Path", { placeholder: "success" })}
-            {field("false_label", "False Branch Path", { placeholder: "fallback" })}
-          </div>
-        </>
-      )}
-      {type === "approval_gate" && (
-        <>
-          {field("message", "Approval Gating Message", { rows: 2, placeholder: "Please review and approve to continue." })}
-          <div>
-            <label className="block text-[11px] font-semibold text-zinc-400 mb-1.5">Required Role</label>
-            <select
-              disabled={disabled}
-              value={String(config.required_role ?? "editor")}
-              onChange={(e) => onChange?.({ ...config, required_role: e.target.value })}
-              className="input-base"
-            >
-              <option value="editor">Editor or Owner</option>
-              <option value="owner">Owner only</option>
-            </select>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Main Pipeline Canvas (exported) ───────────────────────────────────────
-
+// ── Props ──────────────────────────────────────────────────────────────────
 export interface PipelineCanvasProps {
   steps: WorkflowStep[];
   triggers: WorkflowTrigger[];
@@ -621,6 +220,9 @@ export interface PipelineCanvasProps {
   isRunning: boolean;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PipelineCanvas
+// ═══════════════════════════════════════════════════════════════════════════
 export function PipelineCanvas({
   steps,
   triggers,
@@ -632,304 +234,1531 @@ export function PipelineCanvas({
   onRun,
   isRunning,
 }: PipelineCanvasProps) {
+  // ── Viewport state ───────────────────────────────────────────────────────
+  const [zoom, setZoom] = useState(1.0); // 1.0 = 100 %
+  const [offset, setOffset] = useState({ x: 40, y: 40 }); // pan in screen px
+
+  const [isPanning, setIsPanning] = useState(false);
+  const [panAnchor, setPanAnchor] = useState({ x: 0, y: 0 });
+
+  // ── Node drag state ──────────────────────────────────────────────────────
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [dragAnchor, setDragAnchor] = useState({ x: 0, y: 0 }); // canvas coords
+
+  // ── Node positions (canvas coords) ──────────────────────────────────────
+  const [positions, setPositions] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
+
+  // ── Sidebar / config ─────────────────────────────────────────────────────
+  const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [zoom, setZoom] = useState(100);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
+    triggers: false,
+    agents: false,
+    logic: false,
+    actions: false,
+  });
 
   const canEdit = userRole === "owner" || userRole === "editor";
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Filter components in library
-  const filteredSteps = useMemo(() => {
-    return STEP_TYPES.filter((st) =>
-      st.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      st.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery]);
+  // ── Sync positions from persisted config ────────────────────────────────
+  useEffect(() => {
+    setPositions((prev) => {
+      const next = { ...prev };
+      // Trigger
+      if (!next["trigger"]) {
+        const t = triggers[0];
+        next["trigger"] =
+          (t?.config as Record<string, { x: number; y: number }>)?.position ??
+          { x: 60, y: 180 };
+      }
+      // Steps — only set if not already placed
+      steps.forEach((step, idx) => {
+        if (!next[step.id]) {
+          next[step.id] =
+            (step.config as Record<string, { x: number; y: number }>)?.position ?? {
+              x: 420 + idx * 360,
+              y: 180 + (idx % 2 === 0 ? 0 : 160),
+            };
+        }
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [steps.map((s) => s.id).join(","), triggers[0]?.id]);
 
+  // ── Mouse-wheel zoom ────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.0008;
+      setZoom((prev) => Math.min(2.0, Math.max(0.25, prev + delta)));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // ── Canvas-to-screen coord helpers ──────────────────────────────────────
+  const clientToCanvas = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = containerRef.current?.getBoundingClientRect() ?? {
+        left: 0,
+        top: 0,
+      };
+      return {
+        x: (clientX - rect.left - offset.x) / zoom,
+        y: (clientY - rect.top - offset.y) / zoom,
+      };
+    },
+    [offset, zoom]
+  );
+
+  // ── Canvas panning ───────────────────────────────────────────────────────
+  const onCanvasPD = useCallback(
+    (e: React.PointerEvent) => {
+      if ((e.target as HTMLElement).closest(".canvas-node, input, select, textarea, button")) {
+        return;
+      }
+      setIsPanning(true);
+      setPanAnchor({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [offset]
+  );
+
+  const onCanvasPM = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isPanning) return;
+      setOffset({ x: e.clientX - panAnchor.x, y: e.clientY - panAnchor.y });
+    },
+    [isPanning, panAnchor]
+  );
+
+  const onCanvasPU = useCallback((e: React.PointerEvent) => {
+    setIsPanning(false);
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  }, []);
+
+  // ── Node drag ────────────────────────────────────────────────────────────
+  const onNodePD = useCallback(
+    (id: string, e: React.PointerEvent) => {
+      if (!canEdit) return;
+      if ((e.target as HTMLElement).closest("input,select,textarea,button"))
+        return;
+      e.stopPropagation();
+      const currentPos = positions[id] ?? { x: 100, y: 100 };
+      const cp = clientToCanvas(e.clientX, e.clientY);
+      setDragAnchor({ x: cp.x - currentPos.x, y: cp.y - currentPos.y });
+      setActiveDragId(id);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [canEdit, positions, clientToCanvas]
+  );
+
+  const onNodePM = useCallback(
+    (e: React.PointerEvent) => {
+      if (!activeDragId) return;
+      const cp = clientToCanvas(e.clientX, e.clientY);
+      setPositions((prev) => ({
+        ...prev,
+        [activeDragId]: {
+          x: Math.round(cp.x - dragAnchor.x),
+          y: Math.round(cp.y - dragAnchor.y),
+        },
+      }));
+    },
+    [activeDragId, dragAnchor, clientToCanvas]
+  );
+
+  const onNodePU = useCallback(
+    (e: React.PointerEvent) => {
+      if (!activeDragId) return;
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      const finalPos = positions[activeDragId];
+      if (finalPos) {
+        if (activeDragId === "trigger") {
+          const t = triggers[0];
+          if (t)
+            onSaveTrigger(t.trigger_type, {
+              ...(t.config as Record<string, unknown>),
+              position: finalPos,
+            });
+        } else {
+          onStepsChange(
+            steps.map((s) =>
+              s.id === activeDragId
+                ? ({
+                    ...s,
+                    config: {
+                      ...(s.config as Record<string, unknown>),
+                      position: finalPos,
+                    } as WorkflowStep["config"],
+                  } as WorkflowStep)
+                : s
+            )
+          );
+        }
+      }
+      setActiveDragId(null);
+    },
+    [activeDragId, positions, triggers, onSaveTrigger, steps, onStepsChange]
+  );
+
+  // ── Add / delete / update steps ──────────────────────────────────────────
   const addStep = useCallback(
     (type: StepType) => {
       if (!canEdit) return;
-      const nextOrder = steps.length + 1;
       const newStep: WorkflowStep = {
         id: `temp-${Date.now()}`,
         workflow_id: "",
-        step_order: nextOrder,
+        step_order: steps.length + 1,
         type,
-        config: defaultConfig(type) as WorkflowStep["config"],
+        config: {
+          ...defaultConfig(type),
+          position: { x: 420 + steps.length * 360, y: 180 },
+        } as WorkflowStep["config"],
         created_at: new Date().toISOString(),
       };
       onStepsChange([...steps, newStep]);
+      setActiveConfigId(newStep.id);
     },
     [steps, onStepsChange, canEdit]
   );
 
   const deleteStep = useCallback(
-    (index: number) => {
-      const updated = steps
-        .filter((_, i) => i !== index)
-        .map((s, i) => ({ ...s, step_order: i + 1 }));
-      onStepsChange(updated);
+    (id: string) => {
+      onStepsChange(
+        steps
+          .filter((s) => s.id !== id)
+          .map((s, i) => ({ ...s, step_order: i + 1 }))
+      );
+      if (activeConfigId === id) setActiveConfigId(null);
     },
-    [steps, onStepsChange]
-  );
-
-  const moveStep = useCallback(
-    (index: number, direction: "up" | "down") => {
-      const newSteps = [...steps];
-      const swapIdx = direction === "up" ? index - 1 : index + 1;
-      if (swapIdx < 0 || swapIdx >= newSteps.length) return;
-      [newSteps[index], newSteps[swapIdx]] = [newSteps[swapIdx], newSteps[index]];
-      onStepsChange(newSteps.map((s, i) => ({ ...s, step_order: i + 1 })));
-    },
-    [steps, onStepsChange]
+    [steps, onStepsChange, activeConfigId]
   );
 
   const updateStepConfig = useCallback(
-    (index: number, config: Record<string, unknown>) => {
-      const updated = steps.map((s, i) =>
-        i === index ? { ...s, config: config as WorkflowStep["config"] } : s
+    (id: string, cfg: Record<string, unknown>) => {
+      onStepsChange(
+        steps.map((s) =>
+          s.id === id ? { ...s, config: cfg as WorkflowStep["config"] } : s
+        )
       );
-      onStepsChange(updated);
     },
     [steps, onStepsChange]
   );
 
-  const handleZoom = (action: "in" | "out" | "reset") => {
-    if (action === "in") setZoom(Math.min(zoom + 10, 130));
-    if (action === "out") setZoom(Math.max(zoom - 10, 70));
-    if (action === "reset") setZoom(100);
+  // ── Build connection edges ────────────────────────────────────────────────
+  // Supports any-to-any: multiple edges can converge on a single node (LangGraph style)
+  const edges = useMemo(() => {
+    type Edge = {
+      id: string;
+      fromId: string;
+      toId: string;
+      label?: string;
+      color: string;
+    };
+    const result: Edge[] = [];
+
+    const addEdge = (
+      fromId: string,
+      toId: string,
+      label: string | undefined,
+      color: string
+    ) => {
+      if (positions[fromId] && positions[toId]) {
+        result.push({ id: `${fromId}→${toId}`, fromId, toId, label, color });
+      }
+    };
+
+    const trigger = triggers[0];
+
+    // Trigger → first step (or explicit override)
+    const trigNextId = (trigger?.config as Record<string, unknown>)?.next_step_id as
+      | string
+      | undefined;
+    const trigTarget =
+      (trigNextId && steps.find((s) => s.id === trigNextId)) || steps[0];
+    if (trigTarget) {
+      addEdge(
+        "trigger",
+        trigTarget.id,
+        undefined,
+        connColor(trigger?.trigger_type ?? "manual")
+      );
+    }
+
+    // Step → step edges
+    steps.forEach((step, idx) => {
+      const cfg = step.config as Record<string, unknown>;
+
+      if (step.type === "conditional_branch") {
+        // True path
+        const trueId = cfg.true_step_id as string | undefined;
+        const trueTarget = trueId && steps.find((s) => s.id === trueId);
+        if (trueTarget) {
+          addEdge(
+            step.id,
+            trueTarget.id,
+            (cfg.true_label as string) || "True",
+            "#8B5CF6"
+          );
+        } else if (steps[idx + 1]) {
+          // Fallback sequential
+          addEdge(step.id, steps[idx + 1].id, "True (seq)", "#8B5CF6");
+        }
+        // False path
+        const falseId = cfg.false_step_id as string | undefined;
+        const falseTarget = falseId && steps.find((s) => s.id === falseId);
+        if (falseTarget) {
+          addEdge(
+            step.id,
+            falseTarget.id,
+            (cfg.false_label as string) || "False",
+            "#EC4899"
+          );
+        }
+      } else {
+        // Explicit next_step_id override (any node can explicitly route)
+        const nextId = cfg.next_step_id as string | undefined;
+        const nextTarget = nextId && steps.find((s) => s.id === nextId);
+        if (nextTarget) {
+          addEdge(step.id, nextTarget.id, undefined, connColor(step.type));
+        } else if (steps[idx + 1]) {
+          // Sequential fallback
+          addEdge(step.id, steps[idx + 1].id, undefined, connColor(step.type));
+        }
+      }
+    });
+
+    return result;
+  }, [steps, positions, triggers]);
+
+  // ── Sidebar filtered list ────────────────────────────────────────────────
+  const filteredMeta = useMemo(
+    () =>
+      STEP_META.filter(
+        (m) =>
+          m.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.description.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [searchQuery]
+  );
+
+  // ── Zoom buttons ────────────────────────────────────────────────────────
+  const zoomIn = () => setZoom((z) => Math.min(2.0, +(z + 0.1).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)));
+  const zoomReset = () => {
+    setZoom(1.0);
+    setOffset({ x: 40, y: 40 });
   };
 
+  // ── Active items for config panel ────────────────────────────────────────
+  const activeTrigger = triggers[0];
+  const activeStep = steps.find((s) => s.id === activeConfigId);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // JSX
+  // ═══════════════════════════════════════════════════════════════════════
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="h-full flex overflow-hidden bg-[#050409] text-zinc-300">
       <style>{`
-        @keyframes flowDash {
-          to {
-            stroke-dashoffset: -20;
-          }
-        }
-        .flow-connector {
-          stroke-dasharray: 6 4;
-          animation: flowDash 1.5s linear infinite;
+        @keyframes dash { to { stroke-dashoffset: -18; } }
+        .flow-path { stroke-dasharray: 6 4; animation: dash 1.2s linear infinite; }
+        .canvas-bg {
+          background-color: #050409;
+          background-image: radial-gradient(rgba(139,92,246,0.07) 1px, transparent 1px);
+          background-size: 28px 28px;
         }
       `}</style>
 
-      {/* Component Library Sidebar */}
-      <div className="w-60 border-r border-zinc-800/80 bg-zinc-950/40 p-4 space-y-4 flex flex-col flex-shrink-0 z-10 overflow-y-auto">
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3 flex items-center gap-1.5">
-            <Sliders className="w-3.5 h-3.5 text-violet-400" />
+      {/* ── Component Library Sidebar ─────────────────────────────────── */}
+      <aside className="w-64 flex-shrink-0 border-r border-zinc-900 bg-zinc-950/60 flex flex-col overflow-hidden z-20">
+        {/* Search */}
+        <div className="p-4 border-b border-zinc-900 space-y-3">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
             Component Library
-          </h3>
+          </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-zinc-600" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search components..."
+              placeholder="Search nodes…"
               className="w-full text-xs bg-zinc-900/60 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-violet-500/40"
             />
           </div>
         </div>
 
         {/* Categories */}
-        <div className="space-y-4 flex-1">
-          {/* Agent Category */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Agents</span>
-            <div className="space-y-1">
-              {filteredSteps.filter(s => s.category === "agent").map(st => {
-                const blocked = st.ownerOnly && userRole !== "owner";
-                return (
-                  <button
-                    key={st.type}
-                    disabled={blocked || !canEdit}
-                    onClick={() => addStep(st.type)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-left group cursor-pointer border border-transparent",
-                      blocked ? "opacity-30 cursor-not-allowed" : "hover:bg-zinc-900 hover:border-zinc-800"
-                    )}
-                  >
-                    <div className={cn("w-6 h-6 rounded-md flex items-center justify-center border text-zinc-400 flex-shrink-0 group-hover:text-blue-400", getStepTypeColor(st.type))}>
-                      <st.icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-300 group-hover:text-zinc-100 truncate">
-                        {st.label}
-                      </p>
-                    </div>
-                    <Plus className="w-3 h-3 text-zinc-600 group-hover:text-violet-400 transition-colors" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Triggers */}
+          <Section
+            label="Triggers"
+            open={!collapsed.triggers}
+            onToggle={() =>
+              setCollapsed((p) => ({ ...p, triggers: !p.triggers }))
+            }
+          >
+            {TRIGGER_META.map((t) => {
+              const active = activeTrigger?.trigger_type === t.type;
+              return (
+                <SidebarItem
+                  key={t.type}
+                  icon={t.icon}
+                  label={t.label}
+                  active={active}
+                  disabled={!canEdit}
+                  ownerOnly={t.ownerOnly && userRole !== "owner"}
+                  iconColor="text-emerald-400"
+                  onClick={() => {
+                    if (canEdit) {
+                      onSaveTrigger(
+                        t.type,
+                        (activeTrigger?.config as Record<string, unknown>) ?? {}
+                      );
+                      setActiveConfigId("trigger");
+                    }
+                  }}
+                />
+              );
+            })}
+          </Section>
 
-          {/* Logic Category */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Logic / Routing</span>
-            <div className="space-y-1">
-              {filteredSteps.filter(s => s.category === "logic").map(st => {
-                const blocked = st.ownerOnly && userRole !== "owner";
-                return (
-                  <button
-                    key={st.type}
-                    disabled={blocked || !canEdit}
-                    onClick={() => addStep(st.type)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-left group cursor-pointer border border-transparent",
-                      blocked ? "opacity-30 cursor-not-allowed" : "hover:bg-zinc-900 hover:border-zinc-800"
-                    )}
-                  >
-                    <div className={cn("w-6 h-6 rounded-md flex items-center justify-center border text-zinc-400 flex-shrink-0 group-hover:text-green-400", getStepTypeColor(st.type))}>
-                      <st.icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-300 group-hover:text-zinc-100 truncate">
-                        {st.label}
-                      </p>
-                    </div>
-                    <Plus className="w-3 h-3 text-zinc-600 group-hover:text-violet-400 transition-colors" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Agents */}
+          <Section
+            label="Agents"
+            open={!collapsed.agents}
+            onToggle={() => setCollapsed((p) => ({ ...p, agents: !p.agents }))}
+          >
+            {filteredMeta
+              .filter((m) => m.category === "agent")
+              .map((m) => (
+                <SidebarItem
+                  key={m.type}
+                  icon={m.icon}
+                  label={m.label}
+                  disabled={!canEdit}
+                  iconColor="text-blue-400"
+                  onClick={() => addStep(m.type)}
+                />
+              ))}
+          </Section>
 
-          {/* Actions Category */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Actions & Integrations</span>
-            <div className="space-y-1">
-              {filteredSteps.filter(s => s.category === "action").map(st => {
-                const blocked = st.ownerOnly && userRole !== "owner";
+          {/* Logic */}
+          <Section
+            label="Logic & Routing"
+            open={!collapsed.logic}
+            onToggle={() => setCollapsed((p) => ({ ...p, logic: !p.logic }))}
+          >
+            {filteredMeta
+              .filter((m) => m.category === "logic")
+              .map((m) => (
+                <SidebarItem
+                  key={m.type}
+                  icon={m.icon}
+                  label={m.label}
+                  disabled={!canEdit}
+                  iconColor="text-violet-400"
+                  onClick={() => addStep(m.type)}
+                />
+              ))}
+          </Section>
+
+          {/* Actions */}
+          <Section
+            label="Actions & APIs"
+            open={!collapsed.actions}
+            onToggle={() =>
+              setCollapsed((p) => ({ ...p, actions: !p.actions }))
+            }
+          >
+            {filteredMeta
+              .filter((m) => m.category === "action")
+              .map((m) => {
+                const blocked = m.ownerOnly && userRole !== "owner";
                 return (
-                  <button
-                    key={st.type}
-                    disabled={blocked || !canEdit}
-                    onClick={() => addStep(st.type)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all text-left group cursor-pointer border border-transparent",
-                      blocked ? "opacity-30 cursor-not-allowed" : "hover:bg-zinc-900 hover:border-zinc-800"
-                    )}
-                  >
-                    <div className={cn("w-6 h-6 rounded-md flex items-center justify-center border text-zinc-400 flex-shrink-0", getStepTypeColor(st.type))}>
-                      <st.icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-300 group-hover:text-zinc-100 truncate flex items-center gap-1.5">
-                        {st.label}
-                        {st.ownerOnly && <Lock className="w-2.5 h-2.5 text-rose-400" />}
-                      </p>
-                    </div>
-                    <Plus className="w-3 h-3 text-zinc-600 group-hover:text-violet-400 transition-colors" />
-                  </button>
+                  <SidebarItem
+                    key={m.type}
+                    icon={m.icon}
+                    label={m.label}
+                    ownerOnly={blocked}
+                    disabled={!canEdit || !!blocked}
+                    iconColor="text-pink-400"
+                    onClick={() => !blocked && addStep(m.type)}
+                  />
                 );
               })}
-            </div>
-          </div>
+          </Section>
         </div>
-      </div>
 
-      {/* Visual Canvas Area */}
-      <div className="flex-1 bg-[#050409] bg-dot-grid relative overflow-auto p-8 select-none flex flex-col items-center">
-        {/* Canvas Toolbar Controls */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-zinc-950/80 border border-zinc-800 rounded-xl px-3 py-1.5 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider mr-2">
-            <Workflow className="w-3.5 h-3.5 text-violet-400" />
-            Visual Canvas
+        {/* Quick Tips */}
+        <div className="p-3 mx-3 mb-3 bg-zinc-900/40 rounded-xl border border-zinc-800/60 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[9px] font-bold text-zinc-500 uppercase tracking-wider">
+            <Info className="w-3 h-3 text-violet-400" />
+            Quick Tips
           </div>
-          <div className="h-4 w-px bg-zinc-850 mx-1" />
+          <p className="text-[9px] text-zinc-600 leading-relaxed">
+            Drag nodes to position. Click to configure. Use{" "}
+            <kbd className="px-1 rounded bg-zinc-800 text-zinc-400">scroll</kbd>{" "}
+            to zoom. Connect any node to any other via{" "}
+            <strong className="text-zinc-500">Next Node</strong> dropdown.
+          </p>
+        </div>
+      </aside>
+
+      {/* ── Canvas ────────────────────────────────────────────────────── */}
+      <div
+        ref={containerRef}
+        className={cn(
+          "flex-1 relative overflow-hidden canvas-bg",
+          isPanning ? "cursor-grabbing" : "cursor-grab",
+          activeDragId && "cursor-grabbing"
+        )}
+        onPointerDown={onCanvasPD}
+        onPointerMove={onCanvasPM}
+        onPointerUp={onCanvasPU}
+      >
+        {/* Canvas Controls */}
+        <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 bg-zinc-950/80 border border-zinc-800 rounded-xl px-2.5 py-1.5 backdrop-blur-md shadow-xl">
+          <Workflow className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 mr-1">
+            Visual Canvas
+          </span>
+          <div className="w-px h-4 bg-zinc-800" />
           <button
-            onClick={() => handleZoom("out")}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-            title="Zoom Out"
+            onClick={zoomOut}
+            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+            title="Zoom Out (or scroll ↓)"
           >
-            <Minimize className="w-3 h-3" />
+            <ZoomOut className="w-3.5 h-3.5" />
           </button>
-          <span className="text-[10px] font-mono font-bold text-zinc-400 px-1 w-10 text-center">{zoom}%</span>
+          <span className="text-[10px] font-mono font-bold text-zinc-400 w-12 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
           <button
-            onClick={() => handleZoom("in")}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-            title="Zoom In"
+            onClick={zoomIn}
+            className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+            title="Zoom In (or scroll ↑)"
           >
-            <Maximize className="w-3 h-3" />
+            <ZoomIn className="w-3.5 h-3.5" />
           </button>
+          <div className="w-px h-4 bg-zinc-800" />
           <button
-            onClick={() => handleZoom("reset")}
-            className="p-1 rounded hover:bg-zinc-800 text-[10px] font-bold text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-            title="Reset Zoom"
+            onClick={zoomReset}
+            className="px-2 py-0.5 text-[9px] font-bold rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
           >
             Reset
           </button>
+          <div className="w-px h-4 bg-zinc-800" />
+          <button className="p-1 rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-400 transition-colors">
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+          <button className="p-1 rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-400 transition-colors">
+            <Redo2 className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Mock Mini-Map */}
-        <div className="absolute top-4 right-4 z-10 w-24 h-16 bg-zinc-950/80 border border-zinc-850 rounded-xl p-1.5 flex flex-col justify-between shadow-2xl backdrop-blur-sm pointer-events-none hidden md:flex">
-          <div className="flex items-center justify-between text-[7px] text-zinc-500 font-bold uppercase tracking-wider">
-            <span>Mini-Map</span>
-            <div className="w-1 h-1 rounded-full bg-emerald-500" />
-          </div>
-          <div className="flex-1 border border-dashed border-zinc-800 rounded bg-zinc-950/50 mt-1 flex flex-col items-center justify-center gap-0.5 py-0.5 overflow-hidden opacity-50">
-            <div className="w-8 h-1 bg-purple-500/20 rounded" />
-            <div className="w-8 h-1 bg-zinc-800 rounded" />
-            <div className="w-8 h-1 bg-blue-500/20 rounded" />
-            <div className="w-8 h-1 bg-green-500/20 rounded" />
-          </div>
-        </div>
-
-        {/* Node Flow (supports scale transforms from zoom) */}
+        {/* Scalable canvas world */}
         <div
-          style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top center" }}
-          className="flex flex-col items-center py-8 transition-transform duration-200"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            transformOrigin: "0 0",
+            transform: `translate(${offset.x}px,${offset.y}px) scale(${zoom})`,
+          }}
         >
-          {/* Start node */}
-          <div className="flex justify-center mb-0">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/80 border border-zinc-800 text-[10px] font-bold text-zinc-500 uppercase tracking-wide shadow-md">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-              Workflow Entry Port
-            </div>
-          </div>
-          
-          <CanvasConnector />
+          {/* SVG Edges */}
+          <svg
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "6000px",
+              height: "4000px",
+              pointerEvents: "none",
+              overflow: "visible",
+            }}
+          >
+            <defs>
+              {edges.map((e) => (
+                <marker
+                  key={`marker-${e.id}`}
+                  id={`arrow-${e.id}`}
+                  markerWidth="6"
+                  markerHeight="6"
+                  refX="5"
+                  refY="3"
+                  orient="auto"
+                >
+                  <path
+                    d="M0,0 L0,6 L6,3 z"
+                    fill={e.color}
+                    opacity="0.8"
+                  />
+                </marker>
+              ))}
+            </defs>
+            {edges.map((edge) => {
+              const fp = positions[edge.fromId];
+              const tp = positions[edge.toId];
+              if (!fp || !tp) return null;
+              const x1 = fp.x + NODE_W;
+              const y1 = fp.y + NODE_H / 2;
+              const x2 = tp.x;
+              const y2 = tp.y + NODE_H / 2;
+              const dx = Math.max(80, Math.abs(x2 - x1) * 0.45);
+              const path = `M${x1} ${y1} C${x1 + dx} ${y1},${x2 - dx} ${y2},${x2} ${y2}`;
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
+              return (
+                <g key={edge.id}>
+                  {/* Glow */}
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={edge.color}
+                    strokeWidth={5}
+                    opacity={0.08}
+                  />
+                  {/* Animated dash */}
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={edge.color}
+                    strokeWidth={2}
+                    opacity={0.75}
+                    className="flow-path"
+                    markerEnd={`url(#arrow-${edge.id})`}
+                  />
+                  {/* Label */}
+                  {edge.label && (
+                    <foreignObject
+                      x={midX - 26}
+                      y={midY - 9}
+                      width={52}
+                      height={18}
+                    >
+                      <div
+                        style={{
+                          fontSize: "7px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: edge.color,
+                          background: "#09090b",
+                          border: `1px solid ${edge.color}40`,
+                          borderRadius: "999px",
+                          padding: "0 5px",
+                          lineHeight: "16px",
+                          whiteSpace: "nowrap",
+                          textAlign: "center",
+                        }}
+                      >
+                        {edge.label}
+                      </div>
+                    </foreignObject>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
 
-          {/* Trigger Node */}
-          <TriggerNode
-            triggers={triggers}
-            userRole={userRole}
-            onSave={onSaveTrigger}
-          />
+          {/* ── Trigger Node ──────────────────────────────────────────── */}
+          {activeTrigger && (
+            <CanvasNode
+              id="trigger"
+              x={positions["trigger"]?.x ?? 60}
+              y={positions["trigger"]?.y ?? 180}
+              active={activeConfigId === "trigger"}
+              onPointerDown={(e) => onNodePD("trigger", e)}
+              onPointerMove={onNodePM}
+              onPointerUp={onNodePU}
+              onClick={() => setActiveConfigId("trigger")}
+            >
+              <NodeHeader
+                icon={Globe}
+                iconBg="bg-emerald-500/15 border-emerald-500/30"
+                iconColor="text-emerald-400"
+                title={
+                  TRIGGER_META.find(
+                    (t) => t.type === activeTrigger.trigger_type
+                  )?.label ?? "Trigger"
+                }
+                badge="Trigger"
+                badgeColor="bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                subtitle={
+                  activeTrigger.trigger_type === "webhook"
+                    ? "Awaiting HTTP POST"
+                    : activeTrigger.trigger_type === "scheduled"
+                    ? `Cron: ${(activeTrigger.config as Record<string, string>).cron_expression ?? "not set"}`
+                    : activeTrigger.trigger_type === "database_event"
+                    ? `DB ${(activeTrigger.config as Record<string, string>).operation ?? "INSERT"} on ${(activeTrigger.config as Record<string, string>).table ?? "table"}`
+                    : "Manual trigger"
+                }
+              />
+              {/* Output port */}
+              <Port side="right" color="#10B981" />
+            </CanvasNode>
+          )}
 
-          {steps.length > 0 && <CanvasConnector />}
+          {/* ── Step Nodes ───────────────────────────────────────────── */}
+          {steps.map((step) => {
+            const meta = STEP_META.find((m) => m.type === step.type);
+            const Icon = ICON_MAP[step.type];
+            const pos = positions[step.id] ?? { x: 420, y: 180 };
+            const isApproval = step.type === "approval_gate";
+            const isBranch = step.type === "conditional_branch";
+            const color = connColor(step.type);
 
-          {/* Step nodes */}
-          <div className="flex flex-col items-center">
-            {steps.map((step, index) => (
-              <div key={step.id} className="flex flex-col items-center">
-                <StepNode
-                  step={step}
-                  index={index}
-                  total={steps.length}
-                  userRole={userRole}
-                  onMoveUp={() => moveStep(index, "up")}
-                  onMoveDown={() => moveStep(index, "down")}
-                  onDelete={() => deleteStep(index)}
-                  onConfigChange={(cfg) => updateStepConfig(index, cfg)}
-                />
-                {index < steps.length - 1 && <CanvasConnector />}
+            const nodeBorderMap: Record<string, string> = {
+              llm_call: "border-blue-500/25 hover:border-blue-500/50",
+              http_request: "border-pink-500/25 hover:border-pink-500/50",
+              db_write: "border-red-500/25 hover:border-red-500/50",
+              notify: "border-amber-500/25 hover:border-amber-500/50",
+              conditional_branch: "border-violet-500/25 hover:border-violet-500/50",
+              approval_gate: "border-amber-500/25 hover:border-amber-500/50",
+            };
+            const activeBorderMap: Record<string, string> = {
+              llm_call: "border-blue-500 ring-1 ring-blue-500/30",
+              http_request: "border-pink-500 ring-1 ring-pink-500/30",
+              db_write: "border-red-500 ring-1 ring-red-500/30",
+              notify: "border-amber-500 ring-1 ring-amber-500/30",
+              conditional_branch: "border-violet-500 ring-1 ring-violet-500/30",
+              approval_gate: "border-amber-500 ring-1 ring-amber-500/30",
+            };
+
+            const statusBadge = isApproval ? (
+              <div className="flex items-center gap-1 text-[7px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.5 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Gate Active
               </div>
-            ))}
-          </div>
+            ) : (
+              <div className="flex items-center gap-1 text-[7px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Ready
+              </div>
+            );
 
-          <CanvasConnector />
+            let subtitle = meta?.description ?? step.type;
+            const cfg = step.config as Record<string, unknown>;
+            if (step.type === "llm_call")
+              subtitle = `Groq · ${(cfg.model as string) ?? "llama-3.3-70b"}`;
+            else if (step.type === "http_request")
+              subtitle = `${(cfg.method as string) ?? "POST"} · ${((cfg.url as string) ?? "").slice(0, 30)}`;
+            else if (step.type === "conditional_branch")
+              subtitle = `IF ${((cfg.condition as string) ?? "").slice(0, 28)}`;
+            else if (step.type === "notify")
+              subtitle = `${(cfg.channel as string) ?? "email"} notification`;
 
-          {/* End node */}
-          <div className="flex justify-center mt-0">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/80 border border-zinc-800 text-[10px] font-bold text-zinc-500 uppercase tracking-wide shadow-md">
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-              Workflow Termination
-            </div>
-          </div>
+            return (
+              <CanvasNode
+                key={step.id}
+                id={step.id}
+                x={pos.x}
+                y={pos.y}
+                active={activeConfigId === step.id}
+                borderClass={
+                  activeConfigId === step.id
+                    ? activeBorderMap[step.type]
+                    : nodeBorderMap[step.type]
+                }
+                onPointerDown={(e) => onNodePD(step.id, e)}
+                onPointerMove={onNodePM}
+                onPointerUp={onNodePU}
+                onClick={() => setActiveConfigId(step.id)}
+              >
+                <NodeHeader
+                  icon={Icon}
+                  iconBg={getStepTypeColor(step.type)}
+                  title={
+                    <span className="flex items-center gap-1.5">
+                      {meta?.label ?? step.type}
+                      {isOwnerOnlyStep(step.type) && (
+                        <Lock className="w-2.5 h-2.5 text-rose-400 flex-shrink-0" />
+                      )}
+                    </span>
+                  }
+                  subtitle={subtitle}
+                  statusBadge={statusBadge}
+                  stepOrder={step.step_order}
+                />
+                {/* Input port */}
+                <Port side="left" color="#71717a" />
+                {/* Output port(s) */}
+                {isBranch ? (
+                  <>
+                    <Port side="right" color="#8B5CF6" offsetY={-16} />
+                    <Port side="right" color="#EC4899" offsetY={16} />
+                  </>
+                ) : (
+                  <Port side="right" color={color} />
+                )}
+              </CanvasNode>
+            );
+          })}
         </div>
       </div>
+
+      {/* ── Config Side Panel ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {activeConfigId && (
+          <motion.aside
+            key="config-panel"
+            initial={{ x: 400, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 400, opacity: 0 }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="w-[380px] flex-shrink-0 border-l border-zinc-900 bg-zinc-950/95 flex flex-col shadow-2xl z-20"
+          >
+            {/* Panel Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-violet-400" />
+                <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-200">
+                  {activeConfigId === "trigger"
+                    ? "Trigger Configuration"
+                    : "Step Configuration"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveConfigId(null)}
+                className="p-1 rounded-lg hover:bg-zinc-900 text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+              {/* Trigger Config */}
+              {activeConfigId === "trigger" && activeTrigger && (
+                <TriggerConfig
+                  trigger={activeTrigger}
+                  canEdit={canEdit}
+                  onSave={onSaveTrigger}
+                />
+              )}
+
+              {/* Step Config */}
+              {activeStep && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-zinc-600">
+                      Type: {activeStep.type} · Step #{activeStep.step_order}
+                    </span>
+                    {canEdit && (
+                      <button
+                        onClick={() => deleteStep(activeStep.id)}
+                        className="flex items-center gap-1 text-[10px] font-bold text-rose-400 hover:bg-rose-500/10 px-2 py-1 rounded-lg border border-rose-500/20 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Delete
+                      </button>
+                    )}
+                  </div>
+
+                  <StepConfigPanel
+                    step={activeStep}
+                    allSteps={steps}
+                    disabled={!canEdit}
+                    onChange={(cfg) => updateStepConfig(activeStep.id, cfg)}
+                  />
+                </>
+              )}
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sub-components
+// ═══════════════════════════════════════════════════════════════════════════
+
+function Section({
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-1 py-1 text-[9px] font-bold uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors"
+      >
+        <span>{label}</span>
+        <ChevronDown
+          className={cn(
+            "w-3 h-3 transition-transform",
+            !open && "-rotate-90"
+          )}
+        />
+      </button>
+      {open && <div className="space-y-0.5 pl-1">{children}</div>}
+    </div>
+  );
+}
+
+function SidebarItem({
+  icon: Icon,
+  label,
+  active,
+  disabled,
+  ownerOnly,
+  iconColor,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  ownerOnly?: boolean;
+  iconColor: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition-all text-left",
+        active
+          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+          : "border-transparent hover:bg-zinc-900 hover:border-zinc-800 text-zinc-400 hover:text-zinc-200",
+        (disabled || ownerOnly) && "opacity-30 cursor-not-allowed"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className={cn("w-3.5 h-3.5", iconColor)} />
+        <span>{label}</span>
+        {ownerOnly && <Lock className="w-2.5 h-2.5 text-rose-400" />}
+      </div>
+      {!active && <Plus className="w-3 h-3 text-zinc-600 group-hover:text-violet-400" />}
+    </button>
+  );
+}
+
+function CanvasNode({
+  id,
+  x,
+  y,
+  active,
+  borderClass,
+  children,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onClick,
+}: {
+  id: string;
+  x: number;
+  y: number;
+  active: boolean;
+  borderClass?: string;
+  children: React.ReactNode;
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+        width: NODE_W,
+        userSelect: "none",
+        touchAction: "none",
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClick={onClick}
+      className={cn(
+        "canvas-node rounded-xl border backdrop-blur-sm bg-zinc-950/70 shadow-xl cursor-grab active:cursor-grabbing transition-colors relative",
+        borderClass ??
+          (active
+            ? "border-violet-500 ring-1 ring-violet-500/30"
+            : "border-zinc-800/80 hover:border-zinc-700")
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function NodeHeader({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  title,
+  badge,
+  badgeColor,
+  subtitle,
+  statusBadge,
+  stepOrder,
+}: {
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor?: string;
+  title: React.ReactNode;
+  badge?: string;
+  badgeColor?: string;
+  subtitle?: string;
+  statusBadge?: React.ReactNode;
+  stepOrder?: number;
+}) {
+  return (
+    <div className="flex items-center gap-3 p-3.5">
+      <div
+        className={cn(
+          "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border",
+          iconBg
+        )}
+      >
+        <Icon className={cn("w-4.5 h-4.5", iconColor ?? "text-zinc-300")} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-bold text-zinc-100 truncate">
+            {title}
+          </span>
+          {badge && (
+            <span
+              className={cn(
+                "px-1.5 py-0.5 rounded text-[7px] font-bold uppercase border",
+                badgeColor
+              )}
+            >
+              {badge}
+            </span>
+          )}
+        </div>
+        {subtitle && (
+          <p className="text-[9px] text-zinc-600 font-mono truncate mt-0.5">
+            {subtitle}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        {statusBadge}
+        {stepOrder !== undefined && (
+          <span className="text-[7px] font-mono text-zinc-700">
+            #{stepOrder}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Port({
+  side,
+  color,
+  offsetY = 0,
+}: {
+  side: "left" | "right";
+  color: string;
+  offsetY?: number;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        [side]: side === "left" ? -6 : -6,
+        top: `calc(50% + ${offsetY}px)`,
+        transform: "translateY(-50%)",
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        backgroundColor: color,
+        border: "2px solid #09090b",
+        boxShadow: `0 0 8px ${color}60`,
+      }}
+    />
+  );
+}
+
+// ── Trigger Config ──────────────────────────────────────────────────────────
+function TriggerConfig({
+  trigger,
+  canEdit,
+  onSave,
+}: {
+  trigger: WorkflowTrigger;
+  canEdit: boolean;
+  onSave: (type: TriggerType, config: Record<string, unknown>) => void;
+}) {
+  const cfg = trigger.config as Record<string, unknown>;
+  const upd = (patch: Record<string, unknown>) =>
+    onSave(trigger.trigger_type, { ...cfg, ...patch });
+
+  return (
+    <div className="space-y-4">
+      <ConfigField label="Trigger Type">
+        <select
+          disabled={!canEdit}
+          value={trigger.trigger_type}
+          onChange={(e) =>
+            onSave(e.target.value as TriggerType, cfg)
+          }
+          className="cfg-input"
+        >
+          {TRIGGER_META.map((t) => (
+            <option key={t.type} value={t.type}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </ConfigField>
+
+      {trigger.trigger_type === "webhook" && (
+        <ConfigField label="Webhook Secret Token">
+          <input
+            disabled={!canEdit}
+            value={String(cfg.secret_token ?? "")}
+            onChange={(e) => upd({ secret_token: e.target.value })}
+            placeholder="your-strong-secret"
+            className="cfg-input"
+          />
+          <p className="text-[9px] text-zinc-600 mt-1">
+            Header: <code>x-workflow-webhook-secret</code>
+          </p>
+        </ConfigField>
+      )}
+
+      {trigger.trigger_type === "scheduled" && (
+        <ConfigField label="Cron Expression">
+          <input
+            disabled={!canEdit}
+            value={String(cfg.cron_expression ?? "")}
+            onChange={(e) => upd({ cron_expression: e.target.value })}
+            placeholder="0 9 * * 1 (Mon 9am)"
+            className="cfg-input"
+          />
+        </ConfigField>
+      )}
+
+      {trigger.trigger_type === "database_event" && (
+        <>
+          <ConfigField label="Table Name">
+            <input
+              disabled={!canEdit}
+              value={String(cfg.table ?? "")}
+              onChange={(e) => upd({ table: e.target.value })}
+              placeholder="public.my_table"
+              className="cfg-input"
+            />
+          </ConfigField>
+          <ConfigField label="Operation">
+            <select
+              disabled={!canEdit}
+              value={String(cfg.operation ?? "INSERT")}
+              onChange={(e) => upd({ operation: e.target.value })}
+              className="cfg-input"
+            >
+              {["INSERT", "UPDATE", "DELETE"].map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </ConfigField>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Step Config Panel ────────────────────────────────────────────────────────
+function StepConfigPanel({
+  step,
+  allSteps,
+  disabled,
+  onChange,
+}: {
+  step: WorkflowStep;
+  allSteps: WorkflowStep[];
+  disabled: boolean;
+  onChange: (cfg: Record<string, unknown>) => void;
+}) {
+  const cfg = step.config as Record<string, unknown>;
+  const upd = (patch: Record<string, unknown>) => onChange({ ...cfg, ...patch });
+  const others = allSteps.filter((s) => s.id !== step.id);
+
+  // ── Shared connection router (every non-branch step) ──────────────────────
+  const routerSection = step.type !== "conditional_branch" && (
+    <div className="pt-3 border-t border-zinc-900 space-y-2">
+      <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+        <ArrowRight className="w-3 h-3 text-violet-400" />
+        Route Output To
+      </div>
+      <ConfigField label="Next Node (overrides sequential order)">
+        <select
+          disabled={disabled}
+          value={String(cfg.next_step_id ?? "")}
+          onChange={(e) => upd({ next_step_id: e.target.value || null })}
+          className="cfg-input"
+        >
+          <option value="">— Sequential (default) —</option>
+          {others.map((s) => (
+            <option key={s.id} value={s.id}>
+              Step {s.step_order}: {STEP_META.find((m) => m.type === s.type)?.label ?? s.type}
+            </option>
+          ))}
+        </select>
+      </ConfigField>
+    </div>
+  );
+
+  switch (step.type) {
+    case "llm_call":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="System Prompt">
+            <textarea
+              disabled={disabled}
+              rows={2}
+              value={String(cfg.system_prompt ?? "")}
+              onChange={(e) => upd({ system_prompt: e.target.value })}
+              placeholder="You are a helpful AI assistant."
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          <ConfigField label="User Prompt">
+            <textarea
+              disabled={disabled}
+              rows={4}
+              value={String(cfg.prompt ?? "")}
+              onChange={(e) => upd({ prompt: e.target.value })}
+              placeholder="Use {{step_1.output.content}} to reference prior step output."
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          <div className="grid grid-cols-2 gap-3">
+            <ConfigField label="Model">
+              <input
+                disabled={disabled}
+                value={String(cfg.model ?? "")}
+                onChange={(e) => upd({ model: e.target.value })}
+                placeholder="llama-3.3-70b-versatile"
+                className="cfg-input"
+              />
+            </ConfigField>
+            <ConfigField label="Temperature">
+              <input
+                disabled={disabled}
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                value={String(cfg.temperature ?? "0.7")}
+                onChange={(e) => upd({ temperature: Number(e.target.value) })}
+                className="cfg-input"
+              />
+            </ConfigField>
+          </div>
+          <ConfigField label="Max Tokens">
+            <input
+              disabled={disabled}
+              type="number"
+              value={String(cfg.max_tokens ?? "1024")}
+              onChange={(e) => upd({ max_tokens: Number(e.target.value) })}
+              className="cfg-input"
+            />
+          </ConfigField>
+          {routerSection}
+        </div>
+      );
+
+    case "http_request":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="Endpoint URL">
+            <input
+              disabled={disabled}
+              value={String(cfg.url ?? "")}
+              onChange={(e) => upd({ url: e.target.value })}
+              placeholder="https://api.example.com/endpoint"
+              className="cfg-input"
+            />
+          </ConfigField>
+          <div className="grid grid-cols-2 gap-3">
+            <ConfigField label="Method">
+              <select
+                disabled={disabled}
+                value={String(cfg.method ?? "GET")}
+                onChange={(e) => upd({ method: e.target.value })}
+                className="cfg-input"
+              >
+                {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </ConfigField>
+            <ConfigField label="Timeout (ms)">
+              <input
+                disabled={disabled}
+                type="number"
+                value={String(cfg.timeout_ms ?? "30000")}
+                onChange={(e) => upd({ timeout_ms: Number(e.target.value) })}
+                className="cfg-input"
+              />
+            </ConfigField>
+          </div>
+          <ConfigField label="JSON Body Template">
+            <textarea
+              disabled={disabled}
+              rows={3}
+              value={String(cfg.body_template ?? "")}
+              onChange={(e) => upd({ body_template: e.target.value })}
+              placeholder={'{"input": "{{step_1.output.content}}"}'}
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          {routerSection}
+        </div>
+      );
+
+    case "db_write":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="GraphQL Mutation">
+            <textarea
+              disabled={disabled}
+              rows={4}
+              value={String(cfg.mutation ?? "")}
+              onChange={(e) => upd({ mutation: e.target.value })}
+              placeholder="mutation InsertResult($data: jsonb!) { ... }"
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          <ConfigField label="Variables Template (JSON)">
+            <textarea
+              disabled={disabled}
+              rows={2}
+              value={String(cfg.variables_template ?? "")}
+              onChange={(e) => upd({ variables_template: e.target.value })}
+              placeholder={'{"data": "{{step_1.output.content}}"}'}
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          {routerSection}
+        </div>
+      );
+
+    case "notify":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="Channel">
+            <select
+              disabled={disabled}
+              value={String(cfg.channel ?? "email")}
+              onChange={(e) => upd({ channel: e.target.value })}
+              className="cfg-input"
+            >
+              <option value="email">Email (log only)</option>
+              <option value="slack">Slack Webhook</option>
+              <option value="webhook">Generic Webhook</option>
+            </select>
+          </ConfigField>
+          {cfg.channel === "slack" || cfg.channel === "webhook" ? (
+            <ConfigField label="Webhook URL">
+              <input
+                disabled={disabled}
+                value={String(cfg.url ?? "")}
+                onChange={(e) => upd({ url: e.target.value })}
+                placeholder="https://hooks.slack.com/services/…"
+                className="cfg-input"
+              />
+            </ConfigField>
+          ) : (
+            <ConfigField label="Recipient Email">
+              <input
+                disabled={disabled}
+                value={String(cfg.recipient ?? "")}
+                onChange={(e) => upd({ recipient: e.target.value })}
+                placeholder="user@example.com"
+                className="cfg-input"
+              />
+            </ConfigField>
+          )}
+          <ConfigField label="Message Template">
+            <textarea
+              disabled={disabled}
+              rows={2}
+              value={String(cfg.message_template ?? "")}
+              onChange={(e) => upd({ message_template: e.target.value })}
+              placeholder="Workflow update: {{step_1.output.content}}"
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          {routerSection}
+        </div>
+      );
+
+    case "conditional_branch":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="JavaScript Condition">
+            <textarea
+              disabled={disabled}
+              rows={3}
+              value={String(cfg.condition ?? "")}
+              onChange={(e) => upd({ condition: e.target.value })}
+              placeholder={"// Each step output is in scope by name:\n// step_1?.output?.content?.includes('approve')\n// step_2?.output?.status === 200"}
+              className="cfg-input font-mono text-[10px]"
+            />
+            <div className="text-[9px] text-zinc-600 mt-1 space-y-0.5">
+              <p>Use <code className="text-violet-400">step_N?.output?.field</code> to safely access prior step outputs.</p>
+              <p className="text-amber-500/70">⚠ Always use optional chaining (<code className="text-amber-400">?.</code>) to avoid errors on undefined values.</p>
+            </div>
+          </ConfigField>
+
+          <div className="pt-3 border-t border-zinc-900 space-y-3">
+            <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+              <GitFork className="w-3 h-3 text-violet-400" />
+              Branch Routing
+            </div>
+
+            {/* True branch */}
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-violet-500 flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <ConfigField label="True Path Label">
+                  <input
+                    disabled={disabled}
+                    value={String(cfg.true_label ?? "True")}
+                    onChange={(e) => upd({ true_label: e.target.value })}
+                    className="cfg-input"
+                    placeholder="Success"
+                  />
+                </ConfigField>
+                <ConfigField label="True → Route To Node">
+                  <select
+                    disabled={disabled}
+                    value={String(cfg.true_step_id ?? "")}
+                    onChange={(e) =>
+                      upd({ true_step_id: e.target.value || null })
+                    }
+                    className="cfg-input"
+                  >
+                    <option value="">— Sequential next —</option>
+                    {others.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        Step {s.step_order}:{" "}
+                        {STEP_META.find((m) => m.type === s.type)?.label ??
+                          s.type}
+                      </option>
+                    ))}
+                  </select>
+                </ConfigField>
+              </div>
+            </div>
+
+            {/* False branch */}
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-pink-500 flex-shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <ConfigField label="False Path Label">
+                  <input
+                    disabled={disabled}
+                    value={String(cfg.false_label ?? "False")}
+                    onChange={(e) => upd({ false_label: e.target.value })}
+                    className="cfg-input"
+                    placeholder="Fallback"
+                  />
+                </ConfigField>
+                <ConfigField label="False → Route To Node">
+                  <select
+                    disabled={disabled}
+                    value={String(cfg.false_step_id ?? "")}
+                    onChange={(e) =>
+                      upd({ false_step_id: e.target.value || null })
+                    }
+                    className="cfg-input"
+                  >
+                    <option value="">— No false path —</option>
+                    {others.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        Step {s.step_order}:{" "}
+                        {STEP_META.find((m) => m.type === s.type)?.label ??
+                          s.type}
+                      </option>
+                    ))}
+                  </select>
+                </ConfigField>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+    case "approval_gate":
+      return (
+        <div className="space-y-4">
+          <ConfigField label="Approval Message">
+            <textarea
+              disabled={disabled}
+              rows={2}
+              value={String(cfg.message ?? "")}
+              onChange={(e) => upd({ message: e.target.value })}
+              placeholder="Please review and approve to continue."
+              className="cfg-input font-mono"
+            />
+          </ConfigField>
+          <ConfigField label="Minimum Approver Role">
+            <select
+              disabled={disabled}
+              value={String(cfg.required_role ?? "editor")}
+              onChange={(e) => upd({ required_role: e.target.value })}
+              className="cfg-input"
+            >
+              <option value="editor">Editor or Owner</option>
+              <option value="owner">Owner only</option>
+            </select>
+          </ConfigField>
+          {routerSection}
+        </div>
+      );
+
+    default:
+      return null;
+  }
+}
+
+function ConfigField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }

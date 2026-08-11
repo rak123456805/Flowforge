@@ -93,7 +93,15 @@ export default function WorkflowBuilderPage({
 
   function handleSaveSteps() {
     if (!id) return;
-    const stepsToSave = steps.map((s, i) => ({
+    
+    // Sort steps by their X coordinate to determine execution order topologically (left-to-right)
+    const sortedSteps = [...steps].sort((a, b) => {
+      const posA = (a.config as { position?: { x: number } })?.position?.x ?? 0;
+      const posB = (b.config as { position?: { x: number } })?.position?.x ?? 0;
+      return posA - posB;
+    });
+
+    const stepsToSave = sortedSteps.map((s, i) => ({
       workflow_id: id,
       step_order: i + 1,
       type: s.type,

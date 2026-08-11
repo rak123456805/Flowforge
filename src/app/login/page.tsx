@@ -28,7 +28,14 @@ export default function LoginPage() {
       toast.error(error);
     } else {
       toast.success("Welcome back!");
-      router.push("/dashboard");
+      // If a pending invite token exists, redirect to accept page
+      const pendingInviteToken = sessionStorage.getItem("pending_invite_token");
+      if (pendingInviteToken) {
+        sessionStorage.removeItem("pending_invite_token");
+        router.push(`/invite/accept?token=${pendingInviteToken}`);
+      } else {
+        router.push("/dashboard");
+      }
     }
   }
 

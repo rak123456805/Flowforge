@@ -30,6 +30,7 @@ export const GET_ORG_WORKFLOWS = gql`
       name
       description
       is_active
+      visibility
       created_at
       updated_at
       workflow_triggers {
@@ -48,6 +49,11 @@ export const GET_ORG_WORKFLOWS = gql`
           count
         }
       }
+      workflow_accesses {
+        id
+        user_id
+        access
+      }
     }
   }
 `;
@@ -60,6 +66,7 @@ export const GET_WORKFLOW_WITH_STEPS = gql`
       name
       description
       is_active
+      visibility
       created_at
       updated_at
       workflow_steps(order_by: { step_order: asc }) {
@@ -74,6 +81,11 @@ export const GET_WORKFLOW_WITH_STEPS = gql`
         trigger_type
         config
         created_at
+      }
+      workflow_accesses {
+        id
+        user_id
+        access
       }
       workflow_runs(order_by: { created_at: desc }, limit: 5) {
         id
@@ -132,11 +144,61 @@ export const GET_WORKFLOW_RUN_DETAIL = gql`
 
 export const GET_ORG_MEMBERS = gql`
   query GetOrgMembers($orgId: uuid!) {
-    org_members(where: { org_id: { _eq: $orgId } }) {
+    org_members(where: { org_id: { _eq: $orgId } }, order_by: { created_at: asc }) {
       id
       user_id
       role
       created_at
+      user {
+        id
+        displayName
+        email
+        avatarUrl
+      }
+    }
+  }
+`;
+
+export const GET_WORKFLOW_ACCESS = gql`
+  query GetWorkflowAccess($workflowId: uuid!) {
+    workflows_by_pk(id: $workflowId) {
+      id
+      visibility
+      workflow_accesses {
+        id
+        user_id
+        access
+      }
+    }
+  }
+`;
+
+export const UPDATE_WORKFLOW_VISIBILITY = gql`
+  mutation UpdateWorkflowVisibility($id: uuid!, $visibility: String!) {
+    update_workflows_by_pk(pk_columns: { id: $id }, _set: { visibility: $visibility }) {
+      id
+      visibility
+    }
+  }
+`;
+
+export const UPSERT_WORKFLOW_ACCESS = gql`
+  mutation UpsertWorkflowAccess($workflowId: uuid!, $userId: uuid!, $access: String!) {
+    insert_workflow_access_one(
+      object: { workflow_id: $workflowId, user_id: $userId, access: $access }
+      on_conflict: { constraint: workflow_access_workflow_id_user_id_key, update_columns: [access] }
+    ) {
+      id
+      user_id
+      access
+    }
+  }
+`;
+
+export const DELETE_WORKFLOW_ACCESS = gql`
+  mutation DeleteWorkflowAccess($workflowId: uuid!, $userId: uuid!) {
+    delete_workflow_access(where: { workflow_id: { _eq: $workflowId }, user_id: { _eq: $userId } }) {
+      affected_rows
     }
   }
 `;

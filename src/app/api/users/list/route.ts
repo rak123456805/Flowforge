@@ -22,10 +22,9 @@ async function hasuraAdmin<T = unknown>(
 
 export async function GET(req: NextRequest) {
   try {
-    // Fetch all users from auth.users (via Hasura using admin secret)
-    // Note: Nhost auth users are typically exposed as "users" in GraphQL
+    // Fetch all users from auth.users (tracked as 'authUsers' in Hasura by Nhost)
     const data = await hasuraAdmin<{
-      users: Array<{
+      authUsers: Array<{
         id: string;
         email: string;
         displayName: string;
@@ -33,7 +32,7 @@ export async function GET(req: NextRequest) {
       }>;
     }>(
       `query ListAllUsers {
-        users {
+        authUsers {
           id
           email
           displayName
@@ -43,11 +42,10 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({
-      users: data.users,
+      users: data.authUsers,
     });
   } catch (error) {
     console.error("List users error:", error);
-    // If "users" table is not tracked, we can try to fall back or return empty list
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error", users: [] },
       { status: 500 }

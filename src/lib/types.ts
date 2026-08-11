@@ -41,6 +41,20 @@ export interface OrgMember {
   role: UserRole;
   created_at: string;
   organization?: Organization;
+  user?: {
+    id: string;
+    displayName: string | null;
+    email: string;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface WorkflowAccess {
+  id: string;
+  workflow_id: string;
+  user_id: string;
+  access: "view" | "edit" | "none";
+  created_at: string;
 }
 
 export interface Workflow {
@@ -49,12 +63,14 @@ export interface Workflow {
   name: string;
   description: string | null;
   is_active: boolean;
+  visibility: "all" | "owners_only" | "allowlist";
   created_at: string;
   updated_at: string;
   organization?: Organization;
   workflow_steps?: WorkflowStep[];
   workflow_triggers?: WorkflowTrigger[];
   workflow_runs?: WorkflowRun[];
+  workflow_accesses?: WorkflowAccess[];
 }
 
 // ── Step Config Types (JSONB schemas per step type) ───────────────────────

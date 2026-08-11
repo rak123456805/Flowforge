@@ -405,3 +405,29 @@ body {
 
 .sidebar-item-active { color: rgb(244, 244, 245); background-color: rgb(39, 39, 42); border: 1px solid rgba(63, 63, 70, 0.5); }
 
+/* Pipeline canvas config panel form fields */
+.cfg-input {
+  width: 100%;
+  background-color: rgba(24, 24, 27, 0.8);
+  border: 1px solid rgba(63, 63, 70, 0.7);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.7rem;
+  color: rgb(228, 228, 231);
+  outline: none;
+  transition: border-color 0.15s;
+  resize: vertical;
+  line-height: 1.5;
+}
+.cfg-input:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.cfg-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cfg-input.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+

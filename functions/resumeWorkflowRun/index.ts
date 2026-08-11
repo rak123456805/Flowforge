@@ -73,8 +73,34 @@ export default async function handler(req: Request, res: Response): Promise<unkn
       stepOutputs[`step_${sr.step.step_order}`] = { output: sr.output_payload ?? {} };
     }
 
-    // ── 2. Execute remaining steps sequentially ─────────────────────────────
-    for (const step of remaining_steps) {
+    // ── 2. Load all steps and execute them following the visual routes ──────
+    const workflowStepsData = await hasuraAdmin<{
+      workflows_by_pk: {
+        workflow_steps: WorkflowStep[];
+      } | null;
+    }>(
+      `query GetWorkflowSteps($id: uuid!) {
+        workflows_by_pk(id: $id) {
+          workflow_steps(order_by: { step_order: asc }) {
+            id
+            step_order
+            type
+            config
+          }
+        }
+      }`,
+      { id: workflow_id }
+    );
+
+    const allSteps = workflowStepsData.workflows_by_pk?.workflow_steps ?? [];
+
+    let currentStep: WorkflowStep | null = remaining_steps[0]
+      ? (allSteps.find((s) => s.id === remaining_steps[0].id) || null)
+      : null;
+
+    while (currentStep) {
+      const step: WorkflowStep = currentStep;
+
       // Create step_run record
       const stepRunData = await hasuraAdmin<{
         insert_step_runs_one: { id: string };
@@ -171,6 +197,39 @@ export default async function handler(req: Request, res: Response): Promise<unkn
           message: `Workflow failed at step ${step.step_order}: ${stepError}`,
         });
       }
+
+      // Determine the next step using graph routing logic
+      const cfg = step.config as Record<string, unknown>;
+      let nextStep: WorkflowStep | null = null;
+
+      if (step.type === "conditional_branch") {
+        const conditionResult = stepOutput?.result as boolean;
+        const targetStepId = conditionResult
+          ? (cfg.true_step_id as string | undefined)
+          : (cfg.false_step_id as string | undefined);
+
+        if (targetStepId) {
+          nextStep = allSteps.find((s) => s.id === targetStepId) || null;
+        } else {
+          if (conditionResult) {
+            // True fallback: next step by order
+            nextStep = allSteps.find((s) => s.step_order > step.step_order) || null;
+          } else {
+            // False fallback: terminate path
+            nextStep = null;
+          }
+        }
+      } else {
+        const nextStepId = cfg.next_step_id as string | undefined;
+        if (nextStepId) {
+          nextStep = allSteps.find((s) => s.id === nextStepId) || null;
+        } else {
+          // Fallback sequential
+          nextStep = allSteps.find((s) => s.step_order > step.step_order) || null;
+        }
+      }
+
+      currentStep = nextStep;
     }
 
     // ── 3. Complete run + increment quota ───────────────────────────────────
@@ -425,15 +484,30 @@ async function executeConditionalBranch(
     false_label?: string;
   };
 
+  if (!config.condition?.trim()) {
+    throw new Error("conditional_branch step has no condition expression configured.");
+  }
+
+  // Inner try-catch handles runtime errors (undefined property access, etc.).
+  // Outer try-catch handles syntax errors in the condition expression.
   let result: boolean;
   try {
     const conditionFn = new Function(
       "context",
-      `with(context) { return Boolean(${config.condition}); }`
+      `try {
+        with(context) { return Boolean(${config.condition}); }
+      } catch(runtimeErr) {
+        // Safely return false for undefined property access etc.
+        return false;
+      }`
     );
     result = conditionFn(context) as boolean;
-  } catch (err) {
-    throw new Error(`Condition evaluation failed: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (syntaxErr) {
+    throw new Error(
+      `Condition syntax error in expression: "${config.condition}". ` +
+      `Error: ${syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr)}. ` +
+      `Hint: Use step_1?.output?.content?.includes?.('text') for safe property access.`
+    );
   }
 
   return {

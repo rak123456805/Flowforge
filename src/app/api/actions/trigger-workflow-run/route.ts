@@ -293,12 +293,32 @@ async function executeConditionalBranch(
   context: Record<string, Record<string, unknown>>
 ): Promise<{ output: Record<string, unknown>; paused: false }> {
   const config = step.config as { condition: string; true_label?: string; false_label?: string };
+
+  if (!config.condition?.trim()) {
+    throw new Error("conditional_branch step has no condition expression configured.");
+  }
+
   let result: boolean;
   try {
-    const conditionFn = new Function("context", `with(context) { return Boolean(${config.condition}); }`);
+    // Inner try-catch inside the Function body handles runtime errors like
+    // undefined property access (e.g. step_1.output.content is undefined).
+    // Outer try-catch handles syntax errors in the condition expression itself.
+    const conditionFn = new Function(
+      "context",
+      `try {
+        with(context) { return Boolean(${config.condition}); }
+      } catch(runtimeErr) {
+        // Safely return false for undefined property access etc.
+        return false;
+      }`
+    );
     result = conditionFn(context) as boolean;
-  } catch (err) {
-    throw new Error(`Condition evaluation failed: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (syntaxErr) {
+    throw new Error(
+      `Condition syntax error in expression: "${config.condition}". ` +
+      `Error: ${syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr)}. ` +
+      `Hint: Use step_1?.output?.content?.includes?.('text') for safe property access.`
+    );
   }
   return {
     output: {
@@ -387,14 +407,21 @@ export async function POST(req: NextRequest) {
       }, { status: 429 });
     }
 
-    // 3. Load workflow steps
+    // 3. Load workflow steps and triggers
     const workflowData = await hasuraAdmin<{
-      workflows_by_pk: { id: string; name: string; is_active: boolean; workflow_steps: WorkflowStep[] } | null;
+      workflows_by_pk: {
+        id: string;
+        name: string;
+        is_active: boolean;
+        workflow_steps: WorkflowStep[];
+        workflow_triggers: Array<{ config: Record<string, unknown> }>;
+      } | null;
     }>(
       `query GetWorkflow($id: uuid!) {
         workflows_by_pk(id: $id) {
           id name is_active
           workflow_steps(order_by: { step_order: asc }) { id step_order type config }
+          workflow_triggers { config }
         }
       }`,
       { id: workflowId }
@@ -422,10 +449,30 @@ export async function POST(req: NextRequest) {
     );
     const runId = runData.insert_workflow_runs_one.id;
 
-    // 6. Execute steps sequentially
+    // 6. Execute steps using graph traversal (follows next_step_id / true_step_id / false_step_id)
     const stepOutputs: Record<string, Record<string, unknown>> = {};
 
-    for (const step of workflow.workflow_steps) {
+    // Determine entry step (from trigger's next_step_id or first by step_order)
+    const trigCfg = workflow.workflow_triggers?.[0]?.config ?? {};
+    const trigNextId = trigCfg.next_step_id as string | undefined;
+    let currentStep: WorkflowStep | null =
+      (trigNextId && workflow.workflow_steps.find((s) => s.id === trigNextId)) ||
+      workflow.workflow_steps[0] ||
+      null;
+
+    // Track visited steps to guard against infinite loops
+    const visited = new Set<string>();
+
+    while (currentStep) {
+      const step: WorkflowStep = currentStep;
+
+      // Infinite-loop guard
+      if (visited.has(step.id)) {
+        console.warn(`[triggerWorkflowRun] Loop detected at step ${step.id}, stopping.`);
+        break;
+      }
+      visited.add(step.id);
+
       const stepRunData = await hasuraAdmin<{ insert_step_runs_one: { id: string } }>(
         `mutation CreateStepRun($runId: uuid!, $stepId: uuid!) {
           insert_step_runs_one(object: { workflow_run_id: $runId, step_id: $stepId, status: "running", attempt_count: 1 }) { id }
@@ -481,6 +528,33 @@ export async function POST(req: NextRequest) {
           message: `Workflow failed at step ${step.step_order}: ${stepError}`,
         });
       }
+
+      // Determine next step using explicit routes first, then sequential fallback
+      const cfg = step.config as Record<string, unknown>;
+      let nextStep: WorkflowStep | null = null;
+
+      if (step.type === "conditional_branch") {
+        const condResult = stepOutput?.result as boolean;
+        const targetId = condResult
+          ? (cfg.true_step_id as string | undefined)
+          : (cfg.false_step_id as string | undefined);
+        if (targetId) {
+          nextStep = workflow.workflow_steps.find((s) => s.id === targetId) || null;
+        } else if (condResult) {
+          // True → sequential next
+          nextStep = workflow.workflow_steps.find((s) => s.step_order > step.step_order) || null;
+        }
+        // False without false_step_id → terminate path
+      } else {
+        const nextId = cfg.next_step_id as string | undefined;
+        if (nextId) {
+          nextStep = workflow.workflow_steps.find((s) => s.id === nextId) || null;
+        } else {
+          nextStep = workflow.workflow_steps.find((s) => s.step_order > step.step_order) || null;
+        }
+      }
+
+      currentStep = nextStep;
     }
 
     // 7. Complete run + increment quota

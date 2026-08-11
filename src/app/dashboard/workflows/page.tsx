@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatDate, getStatusBg } from "@/lib/utils";
 import type { WorkflowRun } from "@/lib/types";
+import { nhost } from "@/lib/nhost";
 
 const TRIGGER_ICONS: Record<string, React.ElementType> = {
   manual: Zap,
@@ -67,8 +68,21 @@ export default function WorkflowsPage() {
     },
   });
 
-  const workflows = data?.workflows ?? [];
+  const rawWorkflows = data?.workflows ?? [];
   const canEdit = activeRole === "owner" || activeRole === "editor";
+  const myUserId = nhost.auth.getUser()?.id;
+
+  // Filter workflows by visibility & workflow_accesses if user is not an owner
+  const workflows = rawWorkflows.filter((wf: any) => {
+    if (activeRole === "owner") return true;
+    const vis = wf.visibility ?? "all";
+    if (vis === "owners_only") return false;
+    if (vis === "allowlist") {
+      const acc = wf.workflow_accesses?.find((a: any) => a.user_id === myUserId);
+      return acc && acc.access !== "none";
+    }
+    return true;
+  });
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
