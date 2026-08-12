@@ -112,6 +112,48 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, delayMs = 150
   throw lastError;
 }
 
+async function executeConditionalBranch(
+  step: WorkflowStep,
+  context: Record<string, Record<string, unknown>>
+): Promise<{ output: Record<string, unknown>; paused: false }> {
+  const config = step.config as { condition: string; true_label?: string; false_label?: string };
+
+  if (!config.condition?.trim()) {
+    throw new Error("conditional_branch step has no condition expression configured.");
+  }
+
+  let result: boolean;
+  try {
+    // Inner try-catch inside the Function body handles runtime errors like
+    // undefined property access (e.g. step_1.output.content is undefined).
+    // Outer try-catch handles syntax errors in the condition expression itself.
+    const conditionFn = new Function(
+      "context",
+      `try {
+        with(context) { return Boolean(${config.condition}); }
+      } catch(runtimeErr) {
+        // Safely return false for undefined property access etc.
+        return false;
+      }`
+    );
+    result = conditionFn(context) as boolean;
+  } catch (syntaxErr) {
+    throw new Error(
+      `Condition syntax error in expression: "${config.condition}". ` +
+      `Error: ${syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr)}. ` +
+      `Hint: Use step_1?.output?.content?.includes?.('text') for safe property access.`
+    );
+  }
+  return {
+    output: {
+      condition: config.condition,
+      result,
+      branch: result ? (config.true_label ?? "true") : (config.false_label ?? "false"),
+    },
+    paused: false,
+  };
+}
+
 async function executeStep(step: WorkflowStep, context: Record<string, Record<string, unknown>>, callerRole: "owner" | "editor") {
   switch (step.type) {
     case "llm_call": {
@@ -166,13 +208,8 @@ async function executeStep(step: WorkflowStep, context: Record<string, Record<st
       }
       return { output: { sent: true, channel: config.channel, message }, paused: false };
     }
-    case "conditional_branch": {
-      const config = step.config as { condition: string; true_label?: string; false_label?: string };
-      let result: boolean;
-      try { const fn = new Function("context", `with(context) { return Boolean(${config.condition}); }`); result = fn(context) as boolean; }
-      catch (e) { throw new Error(`Condition failed: ${e instanceof Error ? e.message : String(e)}`); }
-      return { output: { condition: config.condition, result, branch: result ? (config.true_label ?? "true") : (config.false_label ?? "false") }, paused: false };
-    }
+    case "conditional_branch":
+      return executeConditionalBranch(step, context);
     case "approval_gate":
       return { output: null, paused: true };
     default:
