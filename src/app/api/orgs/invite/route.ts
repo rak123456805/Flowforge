@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sendInviteEmail } from "@/lib/mailer";
 
 const HASURA_ENDPOINT = process.env.NHOST_GRAPHQL_URL!;
 const HASURA_ADMIN_SECRET = process.env.NHOST_ADMIN_SECRET!;
@@ -40,9 +41,10 @@ async function authenticateUser(
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/orgs/invite
-// Smart invite:
-//   • If invitee already registered → add directly (no email needed)
-//   • If not registered → create pending invitation + return shareable link
+// Invites a user via email:
+//   • Creates a pending invitation in org_invitations
+//   • Sends an invitation email to the invitee with an accept link
+//   • Invitee MUST click link & accept to join org_members
 // ──────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const user = await authenticateUser(req);
@@ -64,9 +66,10 @@ export async function POST(req: NextRequest) {
 
   try {
     // 1. Verify caller is owner
-    const roleCheck = await hasuraAdmin<{ org_members: Array<{ role: string }> }>(
+    const roleCheck = await hasuraAdmin<{ org_members: Array<{ role: string }>; organization: { name: string } | null }>(
       `query CheckCallerRole($userId: uuid!, $orgId: uuid!) {
         org_members(where: { user_id: { _eq: $userId }, org_id: { _eq: $orgId } }) { role }
+        organization(id: $orgId) { name }
       }`,
       { userId: user.id, orgId }
     );
@@ -74,7 +77,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Only owners can invite members" }, { status: 403 });
     }
 
-    // 2. Look up target user by email (citext comparison)
+    const orgName = roleCheck.organization?.name || "the organization";
+
+    // 2. Check if user is ALREADY a member of this organization
     const userLookup = await hasuraAdmin<{ authUsers: Array<{ id: string; email: string }> }>(
       `query FindUser($email: citext!) {
         authUsers(where: { email: { _eq: $email } }) { id email }
@@ -83,9 +88,7 @@ export async function POST(req: NextRequest) {
     );
 
     const existingUser = userLookup.authUsers[0];
-
     if (existingUser) {
-      // ── Fast path: user is already registered — add directly ──────────────
       const memberCheck = await hasuraAdmin<{ org_members: Array<{ id: string }> }>(
         `query CheckMembership($userId: uuid!, $orgId: uuid!) {
           org_members(where: { user_id: { _eq: $userId }, org_id: { _eq: $orgId } }) { id }
@@ -98,30 +101,9 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-
-      await hasuraAdmin(
-        `mutation AddMember($orgId: uuid!, $userId: uuid!, $role: String!) {
-          insert_org_members_one(object: { org_id: $orgId, user_id: $userId, role: $role }) { id }
-        }`,
-        { orgId, userId: existingUser.id, role }
-      );
-
-      // Remove any stale invitations for this email
-      await hasuraAdmin(
-        `mutation CleanInvites($orgId: uuid!, $email: String!) {
-          delete_org_invitations(where: { org_id: { _eq: $orgId }, email: { _eq: $email } }) { affected_rows }
-        }`,
-        { orgId, email: normalizedEmail }
-      ).catch(() => null); // non-critical
-
-      return NextResponse.json({
-        message: `✅ ${normalizedEmail} has been added to the organization as ${role}.`,
-        addedDirectly: true,
-      });
     }
 
-    // ── Slow path: user not registered yet — create pending invitation ─────
-    // Remove any stale invitation for same email (expired/declined)
+    // 3. Check for existing pending invitation
     const existingInvite = await hasuraAdmin<{
       org_invitations: Array<{ id: string; status: string }>;
     }>(
@@ -146,6 +128,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 4. Create pending invitation
     const inviteResult = await hasuraAdmin<{
       insert_org_invitations_one: { id: string; token: string };
     }>(
@@ -160,12 +143,26 @@ export async function POST(req: NextRequest) {
     const token = inviteResult.insert_org_invitations_one.token;
     const acceptUrl = `${APP_URL}/invite/accept?token=${token}`;
 
-    // Return the shareable link — user can copy and send manually
-    // or email services can be wired in later
+    // 5. Send invitation email
+    const emailResult = await sendInviteEmail({
+      toEmail: normalizedEmail,
+      orgName,
+      inviterEmail: user.email,
+      role,
+      inviteLink: acceptUrl,
+    });
+
+    const msg = emailResult.success
+      ? `📧 Invitation email sent to ${normalizedEmail}. They must accept it to join the organization.`
+      : `⚠️ Invitation created for ${normalizedEmail}, but email delivery failed (${emailResult.error || "SMTP error"}). Share the invite link directly with them.`;
+
     return NextResponse.json({
-      message: `📧 ${normalizedEmail} is not registered yet. Share the invite link with them — they can sign up and then visit the link to join.`,
+      message: msg,
       addedDirectly: false,
       inviteLink: acceptUrl,
+      emailSent: emailResult.success,
+      emailError: emailResult.error ?? null,
+      simulated: emailResult.simulated ?? false,
       token,
     });
   } catch (error) {

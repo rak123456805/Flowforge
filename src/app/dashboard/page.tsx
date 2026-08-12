@@ -18,6 +18,8 @@ import Link from "next/link";
 import { formatDate, formatDuration, getStatusBg } from "@/lib/utils";
 import type { WorkflowRun } from "@/lib/types";
 
+import { PendingInvitesBanner } from "@/components/dashboard/pending-invites-banner";
+
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
   show: { opacity: 1, y: 0 },
@@ -84,6 +86,9 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      {/* Pending Invitations Banner */}
+      <PendingInvitesBanner />
+
       {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: -12 }}

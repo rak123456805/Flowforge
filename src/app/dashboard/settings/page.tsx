@@ -19,6 +19,8 @@ import {
 import type { OrgMember, UserRole, Workflow } from "@/lib/types";
 import { nhost } from "@/lib/nhost";
 
+import { PendingInvitesBanner } from "@/components/dashboard/pending-invites-banner";
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Invitation {
   id: string;
@@ -250,6 +252,8 @@ export default function SettingsPage() {
   const [pendingInviteLink, setPendingInviteLink] = useState<string | null>(null);
   const [pendingInviteEmail, setPendingInviteEmail] = useState<string | null>(null);
   const [accessWorkflow, setAccessWorkflow] = useState<Workflow | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<OrgMember | null>(null);
+  const [removingMember, setRemovingMember] = useState(false);
 
   const isOwner = activeRole === "owner";
   const myUserId = nhost.auth.getUser()?.id ?? "";
@@ -266,10 +270,29 @@ export default function SettingsPage() {
     skip: !activeOrg || !isOwner,
   });
 
-  const [removeMember] = useMutation(REMOVE_ORG_MEMBER, {
-    onCompleted() { toast.success("Member removed"); refetchMembers(); },
-    onError(e) { toast.error(e.message); },
-  });
+  const handleRemoveMember = async () => {
+    if (!memberToRemove || !activeOrg) return;
+    setRemovingMember(true);
+    try {
+      const token = nhost.auth.getAccessToken();
+      const res = await fetch(`/api/orgs/members?memberId=${memberToRemove.id}&orgId=${activeOrg.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json() as { message?: string; error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Failed to remove member");
+      } else {
+        toast.success("Member removed from organization");
+        setMemberToRemove(null);
+        refetchMembers();
+      }
+    } catch {
+      toast.error("Network error — please try again");
+    } finally {
+      setRemovingMember(false);
+    }
+  };
 
   const [updateRole] = useMutation(UPDATE_ORG_MEMBER_ROLE, {
     onCompleted() { toast.success("Role updated"); refetchMembers(); },
@@ -306,20 +329,25 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole, orgId: activeOrg.id }),
       });
-      const data = await res.json() as { message?: string; error?: string; addedDirectly?: boolean; inviteLink?: string };
+      const data = await res.json() as {
+        message?: string;
+        error?: string;
+        inviteLink?: string;
+        emailSent?: boolean;
+        simulated?: boolean;
+      };
       if (!res.ok) {
         toast.error(data.error ?? "Failed to send invitation");
-      } else if (data.addedDirectly) {
-        toast.success(data.message ?? "Member added!");
-        setInviteEmail("");
-        setInviteRole("viewer");
-        refetchMembers();
-        fetchInvitations();
       } else {
-        toast.info("User not registered yet — share the invite link below.");
+        if (data.emailSent) {
+          toast.success(data.message ?? `Invitation email sent to ${inviteEmail.trim()}!`);
+        } else {
+          toast.info(data.message ?? "Invitation created. Share the link with the recipient.");
+        }
         setPendingInviteEmail(inviteEmail.trim());
         setPendingInviteLink(data.inviteLink ?? null);
         setInviteEmail("");
+        setInviteRole("viewer");
         fetchInvitations();
       }
     } catch { toast.error("Network error — please try again"); }
@@ -348,6 +376,54 @@ export default function SettingsPage() {
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* Remove Member Confirmation Modal */}
+      <AnimatePresence>
+        {memberToRemove && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="glass rounded-2xl p-6 max-w-md w-full space-y-4 border border-zinc-800"
+            >
+              <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                Remove Member
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Are you sure you want to remove{" "}
+                <strong className="text-zinc-200">
+                  {memberToRemove.user?.displayName || memberToRemove.user?.email}
+                </strong>{" "}
+                from <strong className="text-zinc-200">{activeOrg?.name}</strong>? They will immediately lose access to all workflows in this organization.
+              </p>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setMemberToRemove(null)}
+                  className="btn-secondary px-4 py-2 text-xs"
+                  disabled={removingMember}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRemoveMember}
+                  disabled={removingMember}
+                  className="btn-primary bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 text-xs gap-2"
+                >
+                  {removingMember ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  Remove Member
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Workflow Access Modal */}
       <AnimatePresence>
         {accessWorkflow && (
@@ -362,6 +438,7 @@ export default function SettingsPage() {
       </AnimatePresence>
 
       <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <PendingInvitesBanner />
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-xl font-bold text-zinc-100 mb-1">Settings</h1>
@@ -400,7 +477,7 @@ export default function SettingsPage() {
             </div>
             <form onSubmit={handleInvite} className="p-5 space-y-4">
               <p className="text-xs text-zinc-500">
-                If the email is already registered, they&apos;re added instantly. Otherwise, you&apos;ll get a shareable invite link.
+                An invitation email will be sent to the recipient. They must accept the invitation to join the organization.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1 min-w-[220px]">
@@ -444,7 +521,7 @@ export default function SettingsPage() {
                     <Mail className="w-4 h-4" /> Invite Link for {pendingInviteEmail}
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    User not registered yet. Share this link — once they sign up and click it, they&apos;ll join the org.
+                    Invitation email sent. You can also copy and share this direct link with them to join.
                   </p>
                 </div>
                 <button onClick={() => setPendingInviteLink(null)} className="p-1 rounded hover:bg-zinc-800 text-zinc-600">
@@ -588,8 +665,8 @@ export default function SettingsPage() {
                         </span>
                       )}
                       {isOwner && !isMe && (
-                        <button onClick={() => removeMember({ variables: { id: m.id } })}
-                          className="p-1.5 rounded hover:bg-rose-500/10 text-zinc-600 hover:text-rose-400" title="Remove">
+                        <button onClick={() => setMemberToRemove(m)}
+                          className="p-1.5 rounded hover:bg-rose-500/10 text-zinc-600 hover:text-rose-400 transition-colors" title="Remove Member">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
