@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Plus,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import { useAuth, useOrg } from "@/components/providers/auth-provider";
 import { useSubscription } from "@apollo/client";
@@ -276,6 +277,13 @@ function UserMenu() {
                 >
                   <User className="w-4 h-4" /> Profile
                 </Link>
+                <Link
+                  href="/dashboard/guide"
+                  onClick={() => setOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-zinc-800 transition-colors text-sm text-zinc-400 hover:text-zinc-200"
+                >
+                  <BookOpen className="w-4 h-4 text-violet-400" /> User Guide
+                </Link>
                 <button
                   id="sign-out-btn"
                   onClick={handleSignOut}
@@ -301,6 +309,13 @@ export function Header() {
         <OrgSwitcher />
         {activeOrg && <QuotaBar orgId={activeOrg.id} />}
       </div>
+      <Link
+        href="/dashboard/guide"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40 text-violet-300 text-xs font-semibold transition-all shadow-sm shadow-violet-500/10"
+      >
+        <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+        <span className="hidden sm:inline">User Guide</span>
+      </Link>
       <UserMenu />
     </header>
   );

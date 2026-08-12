@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Activity,
+  BookOpen,
 } from "lucide-react";
 import { useOrg } from "@/components/providers/auth-provider";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/workflows", icon: GitBranch, label: "Workflows" },
   { href: "/dashboard/runs", icon: Play, label: "Run Monitor" },
   { href: "/dashboard/activity", icon: Activity, label: "Activity" },
+  { href: "/dashboard/guide", icon: BookOpen, label: "User Guide" },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
 
